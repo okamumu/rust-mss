@@ -1,0 +1,7 @@
+[package]
+name = "rust-mss"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dd = { git = "https://github.com/okamumu/rust-dd.git", branch = "arena" }
