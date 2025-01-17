@@ -187,14 +187,14 @@ fn without(
         (bdd::Node::NonTerminal(fnode), bdd::Node::NonTerminal(gnode)) if fnode.id() == gnode.id() => {
             dd.zero()
         }
-        (bdd::Node::NonTerminal(fnode), bdd::Node::NonTerminal(gnode)) if dd.level(f) > dd.level(g) => {
+        (bdd::Node::NonTerminal(fnode), bdd::Node::NonTerminal(_gnode)) if dd.level(f) > dd.level(g) => {
             let headerid = fnode.headerid();
             let fnodeid: Vec<_> = fnode.iter().cloned().collect();
             let low = without(dd, fnodeid[0], g, cache);
             let high = without(dd, fnodeid[1], g, cache);
             dd.create_node(headerid, low, high)
         }
-        (bdd::Node::NonTerminal(fnode), bdd::Node::NonTerminal(gnode)) if dd.level(f) < dd.level(g) => {
+        (bdd::Node::NonTerminal(_fnode), bdd::Node::NonTerminal(gnode)) if dd.level(f) < dd.level(g) => {
             without(dd, f, gnode[0], cache)
         }
         (bdd::Node::NonTerminal(fnode), bdd::Node::NonTerminal(gnode)) => {

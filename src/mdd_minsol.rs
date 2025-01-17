@@ -34,7 +34,7 @@ where
         return *x;
     }
     let result = match dd.get_node(node).unwrap() {
-        mtmdd::Node::Terminal(fnode) => node,
+        mtmdd::Node::Terminal(_fnode) => node,
         mtmdd::Node::NonTerminal(fnode) => {
             let headerid = fnode.headerid();
             let fnodeid: Vec<_> = fnode.iter().cloned().collect();
@@ -98,12 +98,12 @@ where
                 .collect();
             mdd.create_node(headerid, &tmp)
         }
-        (mtmdd::Node::NonTerminal(fnode), mtmdd::Node::NonTerminal(gnode))
+        (mtmdd::Node::NonTerminal(fnode), mtmdd::Node::NonTerminal(_gnode))
             if mdd.level(f) > mdd.level(g) =>
         {
             vwithout(mdd, fnode[0], g, cache)
         }
-        (mtmdd::Node::NonTerminal(fnode), mtmdd::Node::NonTerminal(gnode))
+        (mtmdd::Node::NonTerminal(_fnode), mtmdd::Node::NonTerminal(gnode))
             if mdd.level(f) < mdd.level(g) =>
         {
             let headerid = gnode.headerid();
@@ -191,12 +191,12 @@ fn bwithout(
                 .collect();
             mdd.create_node(headerid, &tmp)
         }
-        (mdd::Node::NonTerminal(fnode), mdd::Node::NonTerminal(gnode))
+        (mdd::Node::NonTerminal(fnode), mdd::Node::NonTerminal(_gnode))
             if mdd.level(f) > mdd.level(g) =>
         {
             bwithout(mdd, fnode[0], g, cache)
         }
-        (mdd::Node::NonTerminal(fnode), mdd::Node::NonTerminal(gnode))
+        (mdd::Node::NonTerminal(_fnode), mdd::Node::NonTerminal(gnode))
             if mdd.level(f) < mdd.level(g) =>
         {
             let headerid = gnode.headerid();

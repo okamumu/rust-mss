@@ -79,7 +79,7 @@ impl Iterator for BddPath {
                                 return Some(result);
                             }
                         }
-                        bdd::Node::NonTerminal(fnode) => {
+                        bdd::Node::NonTerminal(_fnode) => {
                             let x = &self.labels[level.unwrap()];
                             let level = level.and_then(|x| x.checked_sub(1));
                             self.next_stack.push(BddStackValue::Pop);

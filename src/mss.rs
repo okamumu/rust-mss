@@ -345,6 +345,10 @@ impl<V> MddNode<V>
 where
     V: MDDValue,
 {
+    pub fn get_node(&self) -> mtmdd2::Node {
+        self.node.clone()
+    }
+    
     pub fn get_id(&self) -> (NodeId, NodeId) {
         match &self.node {
             mtmdd2::Node::Value(x) => (*x, 0),

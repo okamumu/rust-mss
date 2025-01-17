@@ -12,6 +12,7 @@ pub use dd::dot::Dot;
 pub use dd::nodes::DDForest;
 pub use dd::nodes::NonTerminal;
 pub use dd::nodes::Terminal;
+pub use dd::nodes::NodeHeader;
 
 pub use dd::bdd;
 pub use dd::bdd::BddManager;
