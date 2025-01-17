@@ -1,14 +1,19 @@
-use std::collections::HashMap;
-use std::ops::{Add, Sub, Mul};
-use std::rc::{Rc, Weak};
 use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::ops::{Add, Mul, Sub};
+use std::rc::{Rc, Weak};
+
+use dd::common::HeaderId;
+use dd::common::Level;
+use dd::common::NodeId;
 
 use dd::dot::Dot;
+use dd::mdd;
+use dd::mtmdd;
 use dd::mtmdd2;
+use dd::nodes::{DDForest, Terminal};
 
 use crate::mss_algo;
-
-
 
 pub struct MddMgr<V> {
     mdd: Rc<RefCell<mtmdd2::MtMdd2Manager<V>>>,
@@ -21,7 +26,10 @@ pub struct MddNode<V> {
     node: mtmdd2::Node,
 }
 
-impl<V> MddNode<V> where V: mss_algo::MDDValue {
+impl<V> MddNode<V>
+where
+    V: mss_algo::MDDValue,
+{
     fn new(parent: &Rc<RefCell<mtmdd2::MtMdd2Manager<V>>>, node: mtmdd2::Node) -> Self {
         MddNode {
             parent: Rc::downgrade(&parent),
@@ -30,7 +38,10 @@ impl<V> MddNode<V> where V: mss_algo::MDDValue {
     }
 }
 
-impl<V> MddMgr<V> where V: mss_algo::MDDValue {
+impl<V> MddMgr<V>
+where
+    V: mss_algo::MDDValue,
+{
     pub fn new() -> Self {
         MddMgr {
             mdd: Rc::new(RefCell::new(mtmdd2::MtMdd2Manager::new())),
@@ -42,17 +53,25 @@ impl<V> MddMgr<V> where V: mss_algo::MDDValue {
         self.mdd.borrow().size()
     }
 
-    pub fn zero(&self) -> MddNode<V> {
-        MddNode::new(&self.mdd, self.mdd.borrow().zero())
+    pub fn boolean(&self, other: bool) -> MddNode<V> {
+        let mdd = self.mdd.borrow_mut();
+        if other {
+            MddNode::new(&self.mdd, mdd.one())
+        } else {
+            MddNode::new(&self.mdd, mdd.zero())
+        }
     }
 
-    pub fn one(&self) -> MddNode<V> {
-        MddNode::new(&self.mdd, self.mdd.borrow().one())
-    }
-
-    pub fn val(&self, value: V) -> MddNode<V> {
+    pub fn value(&self, value: V) -> MddNode<V> {
         let mut mdd = self.mdd.borrow_mut();
         let node = mdd.value(value);
+        MddNode::new(&self.mdd, node)
+    }
+
+    pub fn create_node(&self, h: HeaderId, nodes: &[MddNode<V>]) -> MddNode<V> {
+        let mut mdd = self.mdd.borrow_mut();
+        let xs = nodes.iter().map(|x| x.node).collect::<Vec<_>>();
+        let node = mdd.create_node(h, &xs);
         MddNode::new(&self.mdd, node)
     }
 
@@ -72,85 +91,201 @@ impl<V> MddMgr<V> where V: mss_algo::MDDValue {
         }
     }
 
-    pub fn var(&self, label: &str) -> Option<MddNode<V>> {
-        if let Some(node) = self.vars.get(label) {
-            Some(node.clone())
-        } else {
-            None
-        }
-    }
+    // pub fn var(&self, label: &str) -> Option<MddNode<V>> {
+    //     if let Some(node) = self.vars.get(label) {
+    //         Some(node.clone())
+    //     } else {
+    //         None
+    //     }
+    // }
 
-    pub fn rpn(&mut self, rpn: &str, vars: &HashMap<String, usize>) -> Result<MddNode<V>, &'static str> {
-        let tokens: Vec<_> = rpn
-            .split_whitespace()
-            .map(|x| {
-                match x {
-                    "+" => mtmdd2::Token::Add,
-                    "-" => mtmdd2::Token::Sub,
-                    "*" => mtmdd2::Token::Mul,
-                    "/" => mtmdd2::Token::Div,
-                    "==" => mtmdd2::Token::Eq,
-                    "!=" => mtmdd2::Token::Neq,
-                    "<" => mtmdd2::Token::Lt,
-                    "<=" => mtmdd2::Token::Lte,
-                    ">" => mtmdd2::Token::Gt,
-                    ">=" => mtmdd2::Token::Gte,
-                    "&&" => mtmdd2::Token::And,
-                    "||" => mtmdd2::Token::Or,
-                    "!" => mtmdd2::Token::Not,
-                    "?" => mtmdd2::Token::IfElse,
-                    "True" => {
-                        let node = {
-                            let mdd = self.mdd.borrow();
-                            mdd.one()
-                        };
-                        mtmdd2::Token::Value(node)
-                    }
-                    "False" => {
-                        let node = {
-                            let mdd = self.mdd.borrow();
-                            mdd.zero()
-                        };
-                        mtmdd2::Token::Value(node)
-                    }
-                    _ => {
-                        // parse whether it is a number or a variable
-                        match x.parse::<V>() {
-                            Ok(val) => {
-                                let node = {
-                                    let mut mdd = self.mdd.borrow_mut();
-                                    mdd.value(val)
-                                };
-                                mtmdd2::Token::Value(node)
-                            }
-                            Err(_) => {
-                                let result = self.vars.get(x);
-                                if let Some(node) = result {
-                                    mtmdd2::Token::Value(node.node.clone())
-                                } else {
-                                    match vars.get(x) {
-                                        Some(range) => {
-                                            let node = self.defvar(x, range.clone());
-                                            mtmdd2::Token::Value(node.node.clone())
-                                        }
-                                        None => panic!("Unknown variable: {}", x),
-                                    }
-                                }
-                            }
-                        }
+    // pub fn get_varorder(&self) -> Vec<String> {
+    //     let mdd = self.mdd.borrow();
+    //     let mut result = vec!["?".to_string(); self.vars.len()];
+    //     for (k, v) in self.vars.iter() {
+    //         let node = mdd.get_node(v.node).unwrap();
+    //         let level = mdd.get_level(v.node);
+    //         result[level] = k.clone();
+    //     }
+    //     self.vars.keys().cloned().collect()
+    // }
+
+    pub fn rpn(&mut self, rpn: &str, vars: &HashMap<String, usize>) -> Result<MddNode<V>, String> {
+        let mut stack = Vec::new();
+        let mut cache = HashMap::new();
+        for token in rpn.split_whitespace() {
+            match token {
+                "+" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.add(a, b);
+                    stack.push(tmp);
+                }
+                "-" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.sub(a, b);
+                    stack.push(tmp);
+                }
+                "*" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.mul(a, b);
+                    stack.push(tmp);
+                }
+                "/" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.div(a, b);
+                    stack.push(tmp);
+                }
+                "min" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.min(a, b);
+                    stack.push(tmp);
+                }
+                "max" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.max(a, b);
+                    stack.push(tmp);
+                }
+                "==" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.eq(a, b);
+                    stack.push(tmp);
+                }
+                "!=" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.neq(a, b);
+                    stack.push(tmp);
+                }
+                "<" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.lt(a, b);
+                    stack.push(tmp);
+                }
+                "<=" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.lte(a, b);
+                    stack.push(tmp);
+                }
+                ">" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.gt(a, b);
+                    stack.push(tmp);
+                }
+                ">=" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.gte(a, b);
+                    stack.push(tmp);
+                }
+                "&&" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.and(a, b);
+                    stack.push(tmp);
+                }
+                "||" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.or(a, b);
+                    stack.push(tmp);
+                }
+                "!" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.not(a);
+                    stack.push(tmp);
+                }
+                "?" => {
+                    let mut mdd = self.mdd.borrow_mut();
+                    let c = stack.pop().unwrap();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    let tmp = mdd.ite(a, b, c);
+                    stack.push(tmp);
+                }
+                "True" => {
+                    let node = {
+                        let mdd = self.mdd.borrow();
+                        mdd.one()
+                    };
+                    stack.push(node);
+                }
+                "False" => {
+                    let node = {
+                        let mdd = self.mdd.borrow();
+                        mdd.zero()
+                    };
+                    stack.push(node);
+                }
+                _ if token.starts_with("save(") && token.ends_with(")") => {
+                    let name = &token[5..token.len() - 1];
+                    if let Some(node) = stack.last() {
+                        cache.insert(name.to_string(), node.clone());
+                    } else {
+                        return Err("Stack is empty for save operation".to_string());
                     }
                 }
-            })
-            .collect();
-        let mut mdd = self.mdd.borrow_mut();
-        if let Ok(node) = mtmdd2::build_from_rpn(&mut mdd, &tokens) {
-            Ok(MddNode::new(&self.mdd, node))
+                _ if token.starts_with("load(") && token.ends_with(")") => {
+                    let name = &token[5..token.len() - 1];
+                    if let Some(node) = cache.get(name) {
+                        stack.push(node.clone());
+                    } else {
+                        return Err(format!("No cached value for {}", name));
+                    }
+                }
+                _ => {
+                    // parse whether it is a number or a variable
+                    match token.parse::<i32>() {
+                        Ok(val) => {
+                            let node = {
+                                let mut mdd = self.mdd.borrow_mut();
+                                mdd.value(V::from(val))
+                            };
+                            stack.push(node);
+                        }
+                        Err(_) => match vars.get(token) {
+                            Some(range) => {
+                                let node = self.defvar(token, range.clone());
+                                stack.push(node.node.clone());
+                            }
+                            None => panic!("Unknown variable: {}", token),
+                        },
+                    }
+                }
+            }
+        }
+        if stack.len() == 1 {
+            Ok(MddNode::new(&self.mdd, stack.pop().unwrap()))
         } else {
-            Err("Invalid expression")
+            Err("Invalid expression".to_string())
         }
     }
 
-    pub fn and(&mut self, nodes: &Vec<MddNode<V>>) -> MddNode<V> {
+    pub fn and(&self, nodes: &[MddNode<V>]) -> MddNode<V> {
         let mut mdd = self.mdd.borrow_mut();
         let xs = nodes.iter().map(|x| &x.node).collect::<Vec<_>>();
         let mut result = mdd.one();
@@ -160,7 +295,7 @@ impl<V> MddMgr<V> where V: mss_algo::MDDValue {
         MddNode::new(&self.mdd, result)
     }
 
-    pub fn or(&mut self, nodes: &Vec<MddNode<V>>) -> MddNode<V> {
+    pub fn or(&self, nodes: &[MddNode<V>]) -> MddNode<V> {
         let mut mdd = self.mdd.borrow_mut();
         let xs = nodes.iter().map(|x| &x.node).collect::<Vec<_>>();
         let mut result = mdd.zero();
@@ -170,20 +305,175 @@ impl<V> MddMgr<V> where V: mss_algo::MDDValue {
         MddNode::new(&self.mdd, result)
     }
 
-    pub fn not(&mut self, node: &MddNode<V>) -> MddNode<V> {
+    pub fn min(&self, nodes: &[MddNode<V>]) -> MddNode<V> {
         let mut mdd = self.mdd.borrow_mut();
-        let result = mdd.not(node.node);
+        let xs = nodes.iter().map(|x| &x.node).collect::<Vec<_>>();
+        let mut result = *xs[0];
+        for &node in xs[1..].iter() {
+            result = mdd.min(result, *node);
+        }
         MddNode::new(&self.mdd, result)
     }
 
-    pub fn ifelse(&mut self, cond: &MddNode<V>, then: &MddNode<V>, els: &MddNode<V>) -> MddNode<V> {
+    pub fn max(&self, nodes: &[MddNode<V>]) -> MddNode<V> {
         let mut mdd = self.mdd.borrow_mut();
-        let result = mdd.ite(cond.node, then.node, els.node);
+        let xs = nodes.iter().map(|x| &x.node).collect::<Vec<_>>();
+        let mut result = *xs[0];
+        for &node in xs[1..].iter() {
+            result = mdd.max(result, *node);
+        }
         MddNode::new(&self.mdd, result)
     }
+
+    // pub fn not(&mut self, node: &MddNode<V>) -> MddNode<V> {
+    //     let mut mdd = self.mdd.borrow_mut();
+    //     let result = mdd.not(node.node);
+    //     MddNode::new(&self.mdd, result)
+    // }
+
+    // pub fn ifelse(&mut self, cond: &MddNode<V>, then: &MddNode<V>, els: &MddNode<V>) -> MddNode<V> {
+    //     let mut mdd = self.mdd.borrow_mut();
+    //     let result = mdd.ite(cond.node, then.node, els.node);
+    //     MddNode::new(&self.mdd, result)
+    // }
 }
 
-impl<V> MddNode<V> where V: mss_algo::MDDValue {
+impl<V> MddNode<V>
+where
+    V: mss_algo::MDDValue,
+{
+    pub fn get_id(&self) -> (NodeId, NodeId) {
+        match &self.node {
+            mtmdd2::Node::Value(x) => (*x, 0),
+            mtmdd2::Node::Bool(x) => (0, *x),
+        }
+    }
+
+    pub fn get_header(&self) -> Option<HeaderId> {
+        match &self.node {
+            mtmdd2::Node::Value(x) => {
+                let mddmgr = self.parent.upgrade().unwrap();
+                let mdd = mddmgr.borrow();
+                let node = mdd.mtmdd().get_node(*x)?;
+                node.headerid()
+            }
+            mtmdd2::Node::Bool(x) => {
+                let mddmgr = self.parent.upgrade().unwrap();
+                let mdd = mddmgr.borrow();
+                let node = mdd.mtmdd().get_node(*x)?;
+                node.headerid()
+            }
+        }
+    }
+
+    pub fn get_level(&self) -> Option<Level> {
+        match &self.node {
+            mtmdd2::Node::Value(x) => {
+                let mddmgr = self.parent.upgrade().unwrap();
+                let mdd = mddmgr.borrow();
+                let node = mdd.mtmdd().get_node(*x)?;
+                let hid = node.headerid()?;
+                let header = mdd.mtmdd().get_header(hid)?;
+                Some(header.level())
+            }
+            mtmdd2::Node::Bool(x) => {
+                let mddmgr = self.parent.upgrade().unwrap();
+                let mdd = mddmgr.borrow();
+                let node = mdd.mtmdd().get_node(*x)?;
+                let hid = node.headerid()?;
+                let header = mdd.mtmdd().get_header(hid)?;
+                Some(header.level())
+            }
+        }
+    }
+
+    pub fn get_label(&self) -> Option<String> {
+        match &self.node {
+            mtmdd2::Node::Value(x) => {
+                let mddmgr = self.parent.upgrade().unwrap();
+                let mdd = mddmgr.borrow();
+                let node = mdd.mtmdd().get_node(*x)?;
+                let hid = node.headerid()?;
+                let header = mdd.mtmdd().get_header(hid)?;
+                Some(header.label().to_string())
+            }
+            mtmdd2::Node::Bool(x) => {
+                let mddmgr = self.parent.upgrade().unwrap();
+                let mdd = mddmgr.borrow();
+                let node = mdd.mtmdd().get_node(*x)?;
+                let hid = node.headerid()?;
+                let header = mdd.mtmdd().get_header(hid)?;
+                Some(header.label().to_string())
+            }
+        }
+    }
+
+    pub fn is_zero(&self) -> bool {
+        match &self.node {
+            mtmdd2::Node::Value(x) => false,
+            mtmdd2::Node::Bool(x) => {
+                let mddmgr = self.parent.upgrade().unwrap();
+                let mdd = mddmgr.borrow();
+                let node = mdd.mdd().get_node(*x).unwrap();
+                match node {
+                    mdd::Node::One => false,
+                    mdd::Node::Zero => true,
+                    mdd::Node::Undet => false,
+                    _ => false,
+                }
+            }
+        }
+    }
+
+    pub fn is_one(&self) -> bool {
+        match &self.node {
+            mtmdd2::Node::Value(x) => false,
+            mtmdd2::Node::Bool(x) => {
+                let mddmgr = self.parent.upgrade().unwrap();
+                let mdd = mddmgr.borrow();
+                let node = mdd.mdd().get_node(*x).unwrap();
+                match node {
+                    mdd::Node::One => true,
+                    mdd::Node::Zero => false,
+                    mdd::Node::Undet => false,
+                    _ => false,
+                }
+            }
+        }
+    }
+
+    pub fn is_undet(&self) -> bool {
+        match &self.node {
+            mtmdd2::Node::Value(x) => false,
+            mtmdd2::Node::Bool(x) => {
+                let mddmgr = self.parent.upgrade().unwrap();
+                let mdd = mddmgr.borrow();
+                let node = mdd.mdd().get_node(*x).unwrap();
+                match node {
+                    mdd::Node::One => false,
+                    mdd::Node::Zero => false,
+                    mdd::Node::Undet => true,
+                    _ => false,
+                }
+            }
+        }
+    }
+
+    pub fn value(&self) -> Option<V> {
+        match &self.node {
+            mtmdd2::Node::Value(x) => {
+                let mddmgr = self.parent.upgrade().unwrap();
+                let mdd = mddmgr.borrow();
+                let node = mdd.mtmdd().get_node(*x).unwrap();
+                match node {
+                    mtmdd::Node::Terminal(fnode) => Some(fnode.value()),
+                    _ => None,
+                }
+            }
+            mtmdd2::Node::Bool(x) => None,
+        }
+    }
+
     pub fn dot(&self) -> String {
         let mddmgr = self.parent.upgrade().unwrap();
         let mdd = mddmgr.borrow();
@@ -215,6 +505,20 @@ impl<V> MddNode<V> where V: mss_algo::MDDValue {
         let mddmgr = self.parent.upgrade().unwrap();
         let mut mdd = mddmgr.borrow_mut();
         let node = mdd.div(self.node, other.node);
+        MddNode::new(&mddmgr, node)
+    }
+
+    pub fn min(&self, other: &MddNode<V>) -> MddNode<V> {
+        let mddmgr = self.parent.upgrade().unwrap();
+        let mut mdd = mddmgr.borrow_mut();
+        let node = mdd.min(self.node, other.node);
+        MddNode::new(&mddmgr, node)
+    }
+
+    pub fn max(&self, other: &MddNode<V>) -> MddNode<V> {
+        let mddmgr = self.parent.upgrade().unwrap();
+        let mut mdd = mddmgr.borrow_mut();
+        let node = mdd.max(self.node, other.node);
         MddNode::new(&mddmgr, node)
     }
 
@@ -260,37 +564,58 @@ impl<V> MddNode<V> where V: mss_algo::MDDValue {
         MddNode::new(&mddmgr, node)
     }
 
-    pub fn value(&self, other: V) -> MddNode<V> {
+    pub fn and(&self, other: &MddNode<V>) -> MddNode<V> {
         let mddmgr = self.parent.upgrade().unwrap();
         let mut mdd = mddmgr.borrow_mut();
-        let node = mdd.value(other);
+        let node = mdd.and(self.node, other.node);
         MddNode::new(&mddmgr, node)
     }
 
-    pub fn boolean(&self, other: bool) -> MddNode<V> {
-        if other {
-            let mddmgr = self.parent.upgrade().unwrap();
-            let mdd = mddmgr.borrow();
-            let node = mdd.one();
-            MddNode::new(&mddmgr, node)
-        } else {
-            let mddmgr = self.parent.upgrade().unwrap();
-            let mdd = mddmgr.borrow();
-            let node = mdd.zero();
-            MddNode::new(&mddmgr, node)
-        }
+    pub fn or(&self, other: &MddNode<V>) -> MddNode<V> {
+        let mddmgr = self.parent.upgrade().unwrap();
+        let mut mdd = mddmgr.borrow_mut();
+        let node = mdd.or(self.node, other.node);
+        MddNode::new(&mddmgr, node)
     }
 
-    pub fn prob<T>(&mut self, pv: &HashMap<String, Vec<T>>) -> HashMap<V, T> 
+    pub fn xor(&self, other: &MddNode<V>) -> MddNode<V> {
+        let mddmgr = self.parent.upgrade().unwrap();
+        let mut mdd = mddmgr.borrow_mut();
+        let node = mdd.xor(self.node, other.node);
+        MddNode::new(&mddmgr, node)
+    }
+
+    pub fn not(&self) -> MddNode<V> {
+        let mddmgr = self.parent.upgrade().unwrap();
+        let mut mdd = mddmgr.borrow_mut();
+        let node = mdd.not(self.node);
+        MddNode::new(&mddmgr, node)
+    }
+
+    pub fn ite(&self, then: &MddNode<V>, els: &MddNode<V>) -> MddNode<V> {
+        let mddmgr = self.parent.upgrade().unwrap();
+        let mut mdd = mddmgr.borrow_mut();
+        let node = mdd.ite(self.node, then.node, els.node);
+        MddNode::new(&mddmgr, node)
+    }
+
+    pub fn prob<T>(&mut self, pv: &HashMap<String, Vec<T>>, ss: &[V]) -> T
     where
-        T: Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Clone + Copy + PartialEq + From<f64>,
+        T: Add<Output = T>
+            + Sub<Output = T>
+            + Mul<Output = T>
+            + Clone
+            + Copy
+            + PartialEq
+            + From<f64>,
     {
         let mgr = self.parent.upgrade().unwrap();
         let mut mdd = mgr.borrow_mut();
-        mss_algo::prob(&mut mdd, &self.node, pv)
+        let hashset: HashSet<V> = ss.iter().cloned().collect();
+        mss_algo::prob(&mut mdd, &self.node, pv, &hashset)
     }
 
-    pub fn mpvs(&mut self) -> MddNode<V> {
+    pub fn minpath(&mut self) -> MddNode<V> {
         let mgr = self.parent.upgrade().unwrap();
         let mut mdd = mgr.borrow_mut();
         let node = mss_algo::minsol(&mut mdd, &self.node);
@@ -327,10 +652,9 @@ mod tests {
         // let one = mgr.one();
         // let two = mgr.val(2);
         let mut vars = HashMap::new();
-        // vars.insert("x".to_string(), 3);
-        // vars.insert("y".to_string(), 3);
-        // vars.insert("z".to_string(), 3);
-        // println!("vars: {:?}", mgr.vars.borrow());
+        vars.insert("x".to_string(), 3);
+        vars.insert("y".to_string(), 3);
+        vars.insert("z".to_string(), 3);
         let rpn = "x y z + *";
         if let Ok(node) = mgr.rpn(rpn, &vars) {
             println!("{}", node.dot());

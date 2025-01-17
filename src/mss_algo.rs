@@ -1,16 +1,15 @@
-
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::{Add, Mul, Sub};
 use std::str::FromStr;
 
 use dd::bdd::Node;
 use dd::common::NodeId;
 use dd::mtmdd2;
-use dd::nodes::{DDForest, NonTerminal};
 use dd::nodes::Terminal;
+use dd::nodes::{DDForest, NonTerminal};
 use dd::{mdd, mtmdd};
 
-pub trait MDDValue : dd::common::TerminalNumberValue + From<i32> + FromStr {
+pub trait MDDValue: dd::common::TerminalNumberValue + From<i32> + FromStr {
     // fn from_i32(x: i32) -> Self {
     //     Self::from(x)
     // }
@@ -19,11 +18,12 @@ pub trait MDDValue : dd::common::TerminalNumberValue + From<i32> + FromStr {
 impl MDDValue for i64 {}
 impl MDDValue for i32 {}
 
-pub fn prob<V,T>(
+pub fn prob<V, T>(
     mdd: &mut mtmdd2::MtMdd2Manager<V>,
     node: &mtmdd2::Node,
     pv: &HashMap<String, Vec<T>>,
-) -> HashMap<V, T>
+    ss: &HashSet<V>,
+) -> T
 where
     T: Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Clone + Copy + PartialEq + From<f64>,
     V: MDDValue,
@@ -31,21 +31,22 @@ where
     match node {
         mtmdd2::Node::Value(fnode) => {
             let mut cache = HashMap::new();
-            vprob(&mut mdd.mtmdd_mut(), *fnode, &pv, &mut cache)
+            vprob(&mut mdd.mtmdd_mut(), *fnode, &pv, ss, &mut cache)
         }
         mtmdd2::Node::Bool(fnode) => {
             let mut cache = HashMap::new();
-            bprob(&mut mdd.mdd_mut(), *fnode, &pv, &mut cache)
+            bprob(&mut mdd.mdd_mut(), *fnode, &pv, ss, &mut cache)
         }
     }
 }
 
-fn vprob<V,T>(
+fn vprob<V, T>(
     mdd: &mut mtmdd::MtMddManager<V>,
     node: NodeId,
     pv: &HashMap<String, Vec<T>>,
-    cache: &mut HashMap<NodeId, HashMap<V, T>>,
-) -> HashMap<V, T>
+    ss: &HashSet<V>,
+    cache: &mut HashMap<NodeId, T>,
+) -> T
 where
     T: Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Clone + Copy + PartialEq + From<f64>,
     V: MDDValue,
@@ -56,39 +57,37 @@ where
     }
     let result = match mdd.get_node(node).unwrap() {
         mtmdd::Node::Terminal(fnode) => {
-            let mut map = HashMap::new();
             let value = fnode.value();
-            map.insert(value, T::from(1.0));
-            map
+            if ss.contains(&value) {
+                T::from(1.0)
+            } else {
+                T::from(0.0)
+            }
         }
         mtmdd::Node::NonTerminal(fnode) => {
             let label = mdd.label(node).unwrap();
             let fp = pv.get(label).unwrap();
-            let mut map = HashMap::new();
+            let mut result = T::from(0.0);
             let fnodeid: Vec<_> = fnode.iter().cloned().collect();
             for (i, x) in fnodeid.into_iter().enumerate() {
-                let tmp = vprob(mdd, x, pv, cache);
-                for (k, v) in tmp.iter() {
-                    let key = *k;
-                    let value = *v;
-                    let entry = map.entry(key).or_insert(T::from(0.0));
-                    *entry = *entry + fp[i] * value;
-                }
+                let tmp = vprob(mdd, x, pv, ss, cache);
+                result = result + fp[i] * tmp;
             }
-            map
+            result
         }
-        mtmdd::Node::Undet => HashMap::new(),
+        mtmdd::Node::Undet => T::from(0.0),
     };
     cache.insert(key, result.clone());
     result
 }
 
-fn bprob<V,T>(
+fn bprob<V, T>(
     mdd: &mut mdd::MddManager,
     node: NodeId,
     pv: &HashMap<String, Vec<T>>,
-    cache: &mut HashMap<NodeId, HashMap<V, T>>,
-) -> HashMap<V, T>
+    ss: &HashSet<V>,
+    cache: &mut HashMap<NodeId, T>,
+) -> T
 where
     T: Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Clone + Copy + PartialEq + From<f64>,
     V: MDDValue,
@@ -99,43 +98,37 @@ where
     }
     let result = match mdd.get_node(node).unwrap() {
         mdd::Node::Zero => {
-            let mut map = HashMap::new();
-            let value = V::from(0);
-            map.insert(value, T::from(1.0));
-            map
+            if ss.contains(&V::from(0)) {
+                T::from(1.0)
+            } else {
+                T::from(0.0)
+            }
         }
         mdd::Node::One => {
-            let mut map = HashMap::new();
-            let value = V::from(1);
-            map.insert(value, T::from(1.0));
-            map
+            if ss.contains(&V::from(1)) {
+                T::from(1.0)
+            } else {
+                T::from(0.0)
+            }
         }
         mdd::Node::NonTerminal(fnode) => {
             let label = mdd.label(node).unwrap();
             let fp = pv.get(label).unwrap();
-            let mut map = HashMap::new();
+            let mut result = T::from(0.0);
             let fnodeid: Vec<_> = fnode.iter().cloned().collect();
             for (i, x) in fnodeid.into_iter().enumerate() {
-                let tmp = bprob(mdd, x, pv, cache);
-                for (k, v) in tmp.iter() {
-                    let key = *k;
-                    let value = *v;
-                    let entry = map.entry(key).or_insert(T::from(0.0));
-                    *entry = *entry + fp[i] * value;
-                }
+                let tmp = bprob(mdd, x, pv, ss, cache);
+                result = result + fp[i] * tmp;
             }
-            map
+            result
         }
-        mdd::Node::Undet => HashMap::new(),
+        mdd::Node::Undet => T::from(0.0),
     };
     cache.insert(key, result.clone());
     result
 }
 
-pub fn minsol<V>(
-    mdd: &mut mtmdd2::MtMdd2Manager<V>,
-    node: &mtmdd2::Node,
-) -> mtmdd2::Node
+pub fn minsol<V>(mdd: &mut mtmdd2::MtMdd2Manager<V>, node: &mtmdd2::Node) -> mtmdd2::Node
 where
     V: MDDValue,
 {
@@ -218,13 +211,19 @@ where
         (mtmdd::Node::NonTerminal(fnode), mtmdd::Node::Terminal(_)) => {
             let headerid = fnode.headerid();
             let fnodeid: Vec<_> = fnode.iter().cloned().collect();
-            let tmp: Vec<_> = fnodeid.into_iter().map(|x| vwithout(mdd, x, g, cache)).collect();
+            let tmp: Vec<_> = fnodeid
+                .into_iter()
+                .map(|x| vwithout(mdd, x, g, cache))
+                .collect();
             mdd.create_node(headerid, &tmp)
         }
         (mtmdd::Node::Terminal(_), mtmdd::Node::NonTerminal(gnode)) => {
             let headerid = gnode.headerid();
             let gnodeid: Vec<_> = gnode.iter().cloned().collect();
-            let tmp: Vec<_> = gnodeid.into_iter().map(|x| vwithout(mdd, f, x, cache)).collect();
+            let tmp: Vec<_> = gnodeid
+                .into_iter()
+                .map(|x| vwithout(mdd, f, x, cache))
+                .collect();
             mdd.create_node(headerid, &tmp)
         }
         (mtmdd::Node::NonTerminal(fnode), mtmdd::Node::NonTerminal(gnode))
@@ -237,7 +236,10 @@ where
         {
             let headerid = gnode.headerid();
             let gnodeid: Vec<_> = gnode.iter().cloned().collect();
-            let tmp: Vec<_> = gnodeid.into_iter().map(|x| vwithout(mdd, f, x, cache)).collect();
+            let tmp: Vec<_> = gnodeid
+                .into_iter()
+                .map(|x| vwithout(mdd, f, x, cache))
+                .collect();
             mdd.create_node(headerid, &tmp)
         }
         (mtmdd::Node::NonTerminal(fnode), mtmdd::Node::NonTerminal(gnode)) => {
@@ -311,7 +313,10 @@ fn bwithout(
         (mdd::Node::NonTerminal(fnode), mdd::Node::One) => {
             let headerid = fnode.headerid();
             let fnodeid: Vec<_> = fnode.iter().cloned().collect();
-            let tmp: Vec<_> = fnodeid.into_iter().map(|x| bwithout(mdd, x, g, cache)).collect();
+            let tmp: Vec<_> = fnodeid
+                .into_iter()
+                .map(|x| bwithout(mdd, x, g, cache))
+                .collect();
             mdd.create_node(headerid, &tmp)
         }
         (mdd::Node::NonTerminal(fnode), mdd::Node::NonTerminal(gnode))
@@ -324,7 +329,10 @@ fn bwithout(
         {
             let headerid = gnode.headerid();
             let gnodeid: Vec<_> = gnode.iter().cloned().collect();
-            let tmp: Vec<_> = gnodeid.into_iter().map(|x| bwithout(mdd, f, x, cache)).collect();
+            let tmp: Vec<_> = gnodeid
+                .into_iter()
+                .map(|x| bwithout(mdd, f, x, cache))
+                .collect();
             mdd.create_node(headerid, &tmp)
         }
         (mdd::Node::NonTerminal(fnode), mdd::Node::NonTerminal(gnode)) => {

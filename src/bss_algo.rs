@@ -1,23 +1,28 @@
 // mod ft
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::ops::{Add, Mul, Sub};
 
 use dd::bdd::*;
+use dd::common;
 use dd::common::NodeId;
 use dd::nodes::{DDForest, NonTerminal};
 
-pub trait ProbValue : Add<Output = Self> + Sub<Output = Self> + Mul<Output = Self> + Clone + Copy + PartialEq + From<f64> {
-    fn from_f64(f: f64) -> Self {
-        Self::from(f)
-    }
+pub trait ProbValue:
+    Add<Output = Self> + Sub<Output = Self> + Mul<Output = Self> + Clone + Copy + PartialEq + From<f64>
+{
 }
+
+impl ProbValue for f64 {}
 
 pub fn prob<T>(
     dd: &BddManager,
     node: NodeId,
     pv: &HashMap<String, T>,
-    cache: &mut HashMap<NodeId, T>,
+    ss: &HashSet<bool>,
+    cache: &mut common::HashMap<NodeId, T>,
 ) -> T
 where
     T: ProbValue,
@@ -27,13 +32,25 @@ where
         return x.clone();
     }
     let result = match dd.get_node(node).unwrap() {
-        Node::Zero => T::from(0.0),
-        Node::One => T::from(1.0),
+        Node::Zero => {
+            if ss.contains(&false) {
+                T::from(1.0)
+            } else {
+                T::from(0.0)
+            }
+        }
+        Node::One => {
+            if ss.contains(&true) {
+                T::from(1.0)
+            } else {
+                T::from(0.0)
+            }
+        }
         Node::NonTerminal(fnode) => {
             let x = dd.label(node).unwrap();
             let fp = *pv.get(x).unwrap_or(&T::from(0.0));
-            let low = prob(dd, fnode[0], pv, cache);
-            let high = prob(dd, fnode[1], pv, cache);
+            let low = prob(dd, fnode[0], pv, ss, cache);
+            let high = prob(dd, fnode[1], pv, ss, cache);
             (T::from(1.0) - fp) * low + fp * high
         }
         Node::Undet => panic!("Undetermined node"),
@@ -45,8 +62,8 @@ where
 pub fn minsol(
     dd: &mut BddManager,
     node: NodeId,
-    cache1: &mut HashMap<NodeId, NodeId>,
-    cache2: &mut HashMap<(NodeId, NodeId), NodeId>,
+    cache1: &mut common::HashMap<NodeId, NodeId>,
+    cache2: &mut common::HashMap<(NodeId, NodeId), NodeId>,
 ) -> NodeId {
     let key = node;
     if let Some(x) = cache1.get(&key) {
@@ -209,7 +226,7 @@ fn without(
     dd: &mut BddManager,
     f: NodeId,
     g: NodeId,
-    cache: &mut HashMap<(NodeId, NodeId), NodeId>,
+    cache: &mut common::HashMap<(NodeId, NodeId), NodeId>,
 ) -> NodeId {
     let key = (f, g);
     if let Some(x) = cache.get(&key) {
@@ -226,23 +243,17 @@ fn without(
             let high = without(dd, f, gnodeid[1], cache);
             dd.create_node(headerid, low, high)
         }
-        (Node::NonTerminal(fnode), Node::NonTerminal(gnode))
-            if fnode.id() == gnode.id() =>
-        {
+        (Node::NonTerminal(fnode), Node::NonTerminal(gnode)) if fnode.id() == gnode.id() => {
             dd.zero()
         }
-        (Node::NonTerminal(fnode), Node::NonTerminal(gnode))
-            if dd.level(f) > dd.level(g) =>
-        {
+        (Node::NonTerminal(fnode), Node::NonTerminal(gnode)) if dd.level(f) > dd.level(g) => {
             let headerid = fnode.headerid();
             let fnodeid: Vec<_> = fnode.iter().cloned().collect();
             let low = without(dd, fnodeid[0], g, cache);
             let high = without(dd, fnodeid[1], g, cache);
             dd.create_node(headerid, low, high)
         }
-        (Node::NonTerminal(fnode), Node::NonTerminal(gnode))
-            if dd.level(f) < dd.level(g) =>
-        {
+        (Node::NonTerminal(fnode), Node::NonTerminal(gnode)) if dd.level(f) < dd.level(g) => {
             without(dd, f, gnode[0], cache)
         }
         (Node::NonTerminal(fnode), Node::NonTerminal(gnode)) => {
@@ -259,7 +270,12 @@ fn without(
     node
 }
 
-pub fn count_set<T>(dd: &BddManager, node: NodeId, cache: &mut HashMap<NodeId, T>) -> T
+pub fn zdd_count<T>(
+    dd: &BddManager,
+    ss: &HashSet<bool>,
+    node: NodeId,
+    cache: &mut common::HashMap<NodeId, T>,
+) -> T
 where
     T: Add<Output = T> + Clone + From<u32>,
 {
@@ -268,10 +284,88 @@ where
         return x.clone();
     }
     let result = match dd.get_node(node).unwrap() {
-        Node::One => T::from(1),
-        Node::Zero => T::from(0),
+        Node::One => {
+            if ss.contains(&true) {
+                T::from(1)
+            } else {
+                T::from(0)
+            }
+        }
+        Node::Zero => {
+            if ss.contains(&false) {
+                T::from(1)
+            } else {
+                T::from(0)
+            }
+        }
         Node::NonTerminal(fnode) => {
-            count_set(dd, fnode[0], cache) + count_set(dd, fnode[1], cache)
+            zdd_count(dd, ss, fnode[0], cache) + zdd_count(dd, ss, fnode[1], cache)
+        }
+        Node::Undet => T::from(0),
+    };
+    cache.insert(key, result.clone());
+    result
+}
+
+fn power<T>(x: T, n: usize) -> T
+where
+    T: Mul<Output = T> + From<u32> + Clone,
+{
+    let mut result = T::from(1);
+    for _ in 0..n {
+        result = result * x.clone();
+    }
+    result
+}
+
+pub fn bdd_count<T>(
+    dd: &BddManager,
+    ss: &HashSet<bool>,
+    node: NodeId,
+    cache: &mut common::HashMap<NodeId, T>,
+) -> T
+where
+    T: Add<Output = T> + Clone + From<u32> + Mul<Output = T>,
+{
+    let key = node;
+    if let Some(x) = cache.get(&key) {
+        return x.clone();
+    }
+    let result = match dd.get_node(node).unwrap() {
+        Node::One => {
+            if ss.contains(&true) {
+                T::from(1)
+            } else {
+                T::from(0)
+            }
+        }
+        Node::Zero => {
+            if ss.contains(&false) {
+                T::from(1)
+            } else {
+                T::from(0)
+            }
+        }
+        Node::NonTerminal(fnode) => {
+            let mut result = T::from(0);
+            let current_level = dd.level(node).unwrap();
+            if let Some(next_level) = dd.level(fnode[0]) {
+                result = result
+                    + power(T::from(2), current_level - next_level - 1)
+                        * bdd_count(dd, ss, fnode[0], cache);
+            } else {
+                result =
+                    result + power(T::from(2), current_level) * bdd_count(dd, ss, fnode[0], cache);
+            }
+            if let Some(next_level) = dd.level(fnode[1]) {
+                result = result
+                    + power(T::from(2), current_level - next_level - 1)
+                        * bdd_count(dd, ss, fnode[1], cache);
+            } else {
+                result =
+                    result + power(T::from(2), current_level) * bdd_count(dd, ss, fnode[1], cache);
+            }
+            result
         }
         Node::Undet => T::from(0),
     };
@@ -281,6 +375,7 @@ where
 
 pub fn bmeas<T>(
     dd: &BddManager,
+    ss: &HashSet<bool>,
     node: NodeId,
     env: &HashMap<String, T>,
 ) -> HashMap<String, T>
@@ -289,7 +384,7 @@ where
 {
     let sorted_nodes = topological_sort(dd, node);
     let mut gradcache = HashMap::new();
-    let mut bddcache = HashMap::new();
+    let mut bddcache = common::HashMap::default();
     let mut gradevent = HashMap::new();
     gradcache.insert(node, T::from(1.0));
     for f in sorted_nodes {
@@ -312,8 +407,8 @@ where
                     w * p
                 };
                 gradcache.insert(fnode[1], result1);
-                let p0 = prob(dd, fnode[0], env, &mut bddcache);
-                let p1 = prob(dd, fnode[1], env, &mut bddcache);
+                let p0 = prob(dd, fnode[0], env, ss, &mut bddcache);
+                let p1 = prob(dd, fnode[1], env, ss, &mut bddcache);
                 let resultv = if let Some(&val) = gradevent.get(x) {
                     val + w * (p1 - p0)
                 } else {
@@ -334,7 +429,7 @@ enum CheckedState {
 
 fn topological_sort(dd: &BddManager, f: NodeId) -> Vec<NodeId> {
     let mut result = Vec::new();
-    let mut check = HashMap::new();
+    let mut check = common::HashMap::default();
     let mut queue = VecDeque::new();
     queue.push_back(f.clone());
     while let Some(node) = queue.pop_front() {
@@ -353,7 +448,7 @@ fn topological_sort(dd: &BddManager, f: NodeId) -> Vec<NodeId> {
 fn visit(
     dd: &BddManager,
     x: NodeId,
-    check: &mut HashMap<NodeId, CheckedState>,
+    check: &mut common::HashMap<NodeId, CheckedState>,
     result: &mut Vec<NodeId>,
     queue: &mut VecDeque<NodeId>,
 ) {
@@ -397,4 +492,3 @@ fn visit(
 //         result.iter().for_each(|x| println!("{:?}", x));
 //     }
 // }
-
