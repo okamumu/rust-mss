@@ -1,3 +1,4 @@
+pub mod bdd_path;
 pub mod bss;
 pub mod bss_algo;
 

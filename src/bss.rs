@@ -14,6 +14,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::rc::Weak;
 
+use crate::bdd_path::ZddPath;
 use crate::bss_algo;
 use crate::bss_algo::ProbValue;
 
@@ -191,6 +192,10 @@ impl BssMgr {
 }
 
 impl BddNode {
+    pub fn get_mgr(&self) -> Rc<RefCell<bdd::BddManager>> {
+        self.parent.upgrade().unwrap()
+    }
+
     pub fn get_id(&self) -> NodeId {
         self.node
     }
@@ -332,17 +337,12 @@ impl BddNode {
         let bdd = self.parent.upgrade().unwrap();
         let mut cache1 = common::HashMap::default();
         let mut cache2 = common::HashMap::default();
-        let result = bss_algo::minsol(
-            &mut bdd.clone().borrow_mut(),
-            self.node,
-            &mut cache1,
-            &mut cache2,
-        );
+        let result = bss_algo::minsol(&mut bdd.borrow_mut(), self.node, &mut cache1, &mut cache2);
         BddNode::new(&bdd, result)
     }
 
-    pub fn extract(&self) -> BddPath {
-        BddPath::new(self.clone())
+    pub fn extract(&self, ss: &[bool]) -> ZddPath {
+        ZddPath::new(self.clone(), ss)
     }
 
     pub fn zdd_count(&self, ss: &[bool]) -> u64 {
@@ -353,66 +353,66 @@ impl BddNode {
     }
 }
 
-enum StackValue {
-    Node(NodeId),
-    Push(String),
-    Pop,
-}
+// enum StackValue {
+//     Node(NodeId),
+//     Push(String),
+//     Pop,
+// }
 
-pub struct BddPath {
-    next_stack: Vec<StackValue>,
-    path: Vec<String>,
-    node: BddNode,
-}
+// pub struct BddPath {
+//     next_stack: Vec<StackValue>,
+//     path: Vec<String>,
+//     node: BddNode,
+// }
 
-impl BddPath {
-    pub fn new(node: BddNode) -> Self {
-        let mut next_stack = Vec::new();
-        next_stack.push(StackValue::Node(node.get_id()));
-        BddPath {
-            next_stack: next_stack,
-            path: Vec::new(),
-            node: node,
-        }
-    }
+// impl BddPath {
+//     pub fn new(node: BddNode) -> Self {
+//         let mut next_stack = Vec::new();
+//         next_stack.push(StackValue::Node(node.get_id()));
+//         BddPath {
+//             next_stack: next_stack,
+//             path: Vec::new(),
+//             node: node,
+//         }
+//     }
 
-    pub fn len(&self) -> u64 {
-        self.node.zdd_count(&vec![true])
-    }
-}
+//     pub fn len(&self) -> u64 {
+//         self.node.zdd_count(&vec![true])
+//     }
+// }
 
-impl Iterator for BddPath {
-    type Item = Vec<String>;
+// impl Iterator for BddPath {
+//     type Item = Vec<String>;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let dd = self.node.parent.upgrade().unwrap();
-        while let Some(stackvalue) = self.next_stack.pop() {
-            match stackvalue {
-                StackValue::Node(node) => match dd.borrow().get_node(node).unwrap() {
-                    bdd::Node::Zero => (),
-                    bdd::Node::One => {
-                        let mut result = self.path.clone();
-                        result.reverse();
-                        return Some(result);
-                    }
-                    bdd::Node::NonTerminal(fnode) => {
-                        let x = dd.borrow().label(node).unwrap().to_string();
-                        self.next_stack.push(StackValue::Pop);
-                        self.next_stack.push(StackValue::Node(fnode[1]));
-                        self.next_stack.push(StackValue::Push(x));
-                        self.next_stack.push(StackValue::Node(fnode[0]));
-                    }
-                    bdd::Node::Undet => (),
-                },
-                StackValue::Push(x) => self.path.push(x),
-                StackValue::Pop => {
-                    self.path.pop();
-                }
-            }
-        }
-        None
-    }
-}
+//     fn next(&mut self) -> Option<Self::Item> {
+//         let dd = self.node.parent.upgrade().unwrap();
+//         while let Some(stackvalue) = self.next_stack.pop() {
+//             match stackvalue {
+//                 StackValue::Node(node) => match dd.borrow().get_node(node).unwrap() {
+//                     bdd::Node::Zero => (),
+//                     bdd::Node::One => {
+//                         let mut result = self.path.clone();
+//                         result.reverse();
+//                         return Some(result);
+//                     }
+//                     bdd::Node::NonTerminal(fnode) => {
+//                         let x = dd.borrow().label(node).unwrap().to_string();
+//                         self.next_stack.push(StackValue::Pop);
+//                         self.next_stack.push(StackValue::Node(fnode[1]));
+//                         self.next_stack.push(StackValue::Push(x));
+//                         self.next_stack.push(StackValue::Node(fnode[0]));
+//                     }
+//                     bdd::Node::Undet => (),
+//                 },
+//                 StackValue::Push(x) => self.path.push(x),
+//                 StackValue::Pop => {
+//                     self.path.pop();
+//                 }
+//             }
+//         }
+//         None
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -471,7 +471,7 @@ mod tests {
         let z = bss.defvar("z");
         let z = bss.rpn("x y & z |").unwrap();
         println!("{}", z.dot());
-        let path = z.extract();
+        let path = z.extract(&[true]);
         let mut count = 0;
         for p in path {
             count += 1;
