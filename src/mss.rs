@@ -1,19 +1,22 @@
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
-use std::ops::{Add, Mul, Sub};
-use std::rc::{Rc, Weak};
+use crate::prelude::*;
 
-use dd::common::HeaderId;
-use dd::common::Level;
-use dd::common::NodeId;
+// use std::cell::RefCell;
+// use std::collections::{HashMap, HashSet};
+// use std::ops::{Add, Mul, Sub};
+// use std::rc::{Rc, Weak};
 
-use dd::dot::Dot;
-use dd::mdd;
-use dd::mtmdd;
-use dd::mtmdd2;
-use dd::nodes::{DDForest, Terminal};
+// use dd::common::HeaderId;
+// use dd::common::Level;
+// use dd::common::NodeId;
 
-use crate::mss_algo;
+// use dd::dot::Dot;
+// use dd::mdd;
+// use dd::mtmdd;
+// use dd::mtmdd2;
+// use dd::nodes::{DDForest, Terminal};
+
+use crate::mdd_prob;
+use crate::mdd_minsol;
 
 pub struct MddMgr<V> {
     mdd: Rc<RefCell<mtmdd2::MtMdd2Manager<V>>>,
@@ -28,7 +31,7 @@ pub struct MddNode<V> {
 
 impl<V> MddNode<V>
 where
-    V: mss_algo::MDDValue,
+    V: MDDValue,
 {
     fn new(parent: &Rc<RefCell<mtmdd2::MtMdd2Manager<V>>>, node: mtmdd2::Node) -> Self {
         MddNode {
@@ -40,7 +43,7 @@ where
 
 impl<V> MddMgr<V>
 where
-    V: mss_algo::MDDValue,
+    V: MDDValue,
 {
     pub fn new() -> Self {
         MddMgr {
@@ -340,7 +343,7 @@ where
 
 impl<V> MddNode<V>
 where
-    V: mss_algo::MDDValue,
+    V: MDDValue,
 {
     pub fn get_id(&self) -> (NodeId, NodeId) {
         match &self.node {
@@ -612,13 +615,13 @@ where
         let mgr = self.parent.upgrade().unwrap();
         let mut mdd = mgr.borrow_mut();
         let hashset: HashSet<V> = ss.iter().cloned().collect();
-        mss_algo::prob(&mut mdd, &self.node, pv, &hashset)
+        mdd_prob::prob(&mut mdd, &self.node, pv, &hashset)
     }
 
     pub fn minpath(&mut self) -> MddNode<V> {
         let mgr = self.parent.upgrade().unwrap();
         let mut mdd = mgr.borrow_mut();
-        let node = mss_algo::minsol(&mut mdd, &self.node);
+        let node = mdd_minsol::minsol(&mut mdd, &self.node);
         MddNode::new(&mgr, node)
     }
 

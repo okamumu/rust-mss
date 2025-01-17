@@ -1,132 +1,4 @@
-use std::collections::{HashMap, HashSet};
-use std::ops::{Add, Mul, Sub};
-use std::str::FromStr;
-
-use dd::bdd::Node;
-use dd::common::NodeId;
-use dd::mtmdd2;
-use dd::nodes::Terminal;
-use dd::nodes::{DDForest, NonTerminal};
-use dd::{mdd, mtmdd};
-
-pub trait MDDValue: dd::common::TerminalNumberValue + From<i32> + FromStr {
-    // fn from_i32(x: i32) -> Self {
-    //     Self::from(x)
-    // }
-}
-
-impl MDDValue for i64 {}
-impl MDDValue for i32 {}
-
-pub fn prob<V, T>(
-    mdd: &mut mtmdd2::MtMdd2Manager<V>,
-    node: &mtmdd2::Node,
-    pv: &HashMap<String, Vec<T>>,
-    ss: &HashSet<V>,
-) -> T
-where
-    T: Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Clone + Copy + PartialEq + From<f64>,
-    V: MDDValue,
-{
-    match node {
-        mtmdd2::Node::Value(fnode) => {
-            let mut cache = HashMap::new();
-            vprob(&mut mdd.mtmdd_mut(), *fnode, &pv, ss, &mut cache)
-        }
-        mtmdd2::Node::Bool(fnode) => {
-            let mut cache = HashMap::new();
-            bprob(&mut mdd.mdd_mut(), *fnode, &pv, ss, &mut cache)
-        }
-    }
-}
-
-fn vprob<V, T>(
-    mdd: &mut mtmdd::MtMddManager<V>,
-    node: NodeId,
-    pv: &HashMap<String, Vec<T>>,
-    ss: &HashSet<V>,
-    cache: &mut HashMap<NodeId, T>,
-) -> T
-where
-    T: Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Clone + Copy + PartialEq + From<f64>,
-    V: MDDValue,
-{
-    let key = node;
-    if let Some(x) = cache.get(&key) {
-        return x.clone();
-    }
-    let result = match mdd.get_node(node).unwrap() {
-        mtmdd::Node::Terminal(fnode) => {
-            let value = fnode.value();
-            if ss.contains(&value) {
-                T::from(1.0)
-            } else {
-                T::from(0.0)
-            }
-        }
-        mtmdd::Node::NonTerminal(fnode) => {
-            let label = mdd.label(node).unwrap();
-            let fp = pv.get(label).unwrap();
-            let mut result = T::from(0.0);
-            let fnodeid: Vec<_> = fnode.iter().cloned().collect();
-            for (i, x) in fnodeid.into_iter().enumerate() {
-                let tmp = vprob(mdd, x, pv, ss, cache);
-                result = result + fp[i] * tmp;
-            }
-            result
-        }
-        mtmdd::Node::Undet => T::from(0.0),
-    };
-    cache.insert(key, result.clone());
-    result
-}
-
-fn bprob<V, T>(
-    mdd: &mut mdd::MddManager,
-    node: NodeId,
-    pv: &HashMap<String, Vec<T>>,
-    ss: &HashSet<V>,
-    cache: &mut HashMap<NodeId, T>,
-) -> T
-where
-    T: Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Clone + Copy + PartialEq + From<f64>,
-    V: MDDValue,
-{
-    let key = node;
-    if let Some(x) = cache.get(&key) {
-        return x.clone();
-    }
-    let result = match mdd.get_node(node).unwrap() {
-        mdd::Node::Zero => {
-            if ss.contains(&V::from(0)) {
-                T::from(1.0)
-            } else {
-                T::from(0.0)
-            }
-        }
-        mdd::Node::One => {
-            if ss.contains(&V::from(1)) {
-                T::from(1.0)
-            } else {
-                T::from(0.0)
-            }
-        }
-        mdd::Node::NonTerminal(fnode) => {
-            let label = mdd.label(node).unwrap();
-            let fp = pv.get(label).unwrap();
-            let mut result = T::from(0.0);
-            let fnodeid: Vec<_> = fnode.iter().cloned().collect();
-            for (i, x) in fnodeid.into_iter().enumerate() {
-                let tmp = bprob(mdd, x, pv, ss, cache);
-                result = result + fp[i] * tmp;
-            }
-            result
-        }
-        mdd::Node::Undet => T::from(0.0),
-    };
-    cache.insert(key, result.clone());
-    result
-}
+use crate::prelude::*;
 
 pub fn minsol<V>(mdd: &mut mtmdd2::MtMdd2Manager<V>, node: &mtmdd2::Node) -> mtmdd2::Node
 where
@@ -134,14 +6,14 @@ where
 {
     match node {
         mtmdd2::Node::Value(fnode) => {
-            let mut cache1 = HashMap::new();
-            let mut cache2 = HashMap::new();
+            let mut cache1 = BddHashMap::default();
+            let mut cache2 = BddHashMap::default();
             let result = vminsol(&mut mdd.mtmdd_mut(), *fnode, &mut cache1, &mut cache2);
             mtmdd2::Node::Value(result)
         }
         mtmdd2::Node::Bool(fnode) => {
-            let mut cache1 = HashMap::new();
-            let mut cache2 = HashMap::new();
+            let mut cache1 = BddHashMap::default();
+            let mut cache2 = BddHashMap::default();
             let result = bminsol(&mut mdd.mdd_mut(), *fnode, &mut cache1, &mut cache2);
             mtmdd2::Node::Bool(result)
         }
@@ -151,8 +23,8 @@ where
 fn vminsol<V>(
     dd: &mut mtmdd::MtMddManager<V>,
     node: NodeId,
-    cache1: &mut HashMap<NodeId, NodeId>,
-    cache2: &mut HashMap<(NodeId, NodeId), NodeId>,
+    cache1: &mut BddHashMap<NodeId, NodeId>,
+    cache2: &mut BddHashMap<(NodeId, NodeId), NodeId>,
 ) -> NodeId
 where
     V: MDDValue,
@@ -189,7 +61,7 @@ fn vwithout<V>(
     mdd: &mut mtmdd::MtMddManager<V>,
     f: NodeId,
     g: NodeId, // minsol tree
-    cache: &mut HashMap<(NodeId, NodeId), NodeId>,
+    cache: &mut BddHashMap<(NodeId, NodeId), NodeId>,
 ) -> NodeId
 where
     V: MDDValue,
@@ -261,8 +133,8 @@ where
 fn bminsol(
     dd: &mut mdd::MddManager,
     node: NodeId,
-    cache1: &mut HashMap<NodeId, NodeId>,
-    cache2: &mut HashMap<(NodeId, NodeId), NodeId>,
+    cache1: &mut BddHashMap<NodeId, NodeId>,
+    cache2: &mut BddHashMap<(NodeId, NodeId), NodeId>,
 ) -> NodeId {
     let key = node;
     if let Some(x) = cache1.get(&key) {
@@ -297,7 +169,7 @@ fn bwithout(
     mdd: &mut mdd::MddManager,
     f: NodeId,
     g: NodeId, // minsol tree
-    cache: &mut HashMap<(NodeId, NodeId), NodeId>,
+    cache: &mut BddHashMap<(NodeId, NodeId), NodeId>,
 ) -> NodeId {
     let key = (f, g);
     if let Some(x) = cache.get(&key) {
