@@ -1,4 +1,4 @@
-- [ ] BDDPath and ZDDPath with value sets
+- [x] BDDPath and ZDDPath with value sets
 - [ ] MDDPath and ZMDDPath?
 - [ ] Test codes for all functions
 - [ ] Documentations

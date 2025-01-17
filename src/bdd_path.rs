@@ -1,39 +1,161 @@
-use std::collections::HashSet;
-
 use dd::bdd;
+use dd::common::Level;
 use dd::common::NodeId;
 use dd::nodes::DDForest;
 
 use crate::bss::BddNode;
 
-enum StackValue {
+enum BddStackValue {
+    Node(Option<Level>, NodeId),
+    Push(String),
+    Pop,
+}
+
+pub struct BddPath {
+    next_stack: Vec<BddStackValue>,
+    path: Vec<String>,
+    node: BddNode,
+    labels: Vec<String>,
+    ss: Vec<bool>,
+}
+
+impl BddPath {
+    pub fn new(node: BddNode, ss: &[bool]) -> Self {
+        let ss = ss.iter().cloned().collect::<Vec<_>>();
+        let mut next_stack = Vec::new();
+        let level = node.get_level();
+        next_stack.push(BddStackValue::Node(level, node.get_id()));
+
+        let dd = node.get_mgr();
+        let (nheaders, _, _) = dd.borrow().size();
+        let mut labels = vec![String::new(); nheaders];
+        for hid in 0..nheaders {
+            let i = dd.borrow().get_header(hid).unwrap().level();
+            let value = dd.borrow().get_header(hid).unwrap().label().to_string();
+            labels[i] = value;
+        }
+
+        BddPath {
+            next_stack,
+            path: Vec::new(),
+            node,
+            labels,
+            ss,
+        }
+    }
+
+    pub fn len(&self) -> u64 {
+        self.node.bdd_count(&self.ss)
+    }
+}
+
+impl Iterator for BddPath {
+    type Item = Vec<String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let dd = self.node.get_mgr();
+        while let Some(stackvalue) = self.next_stack.pop() {
+            match stackvalue {
+                BddStackValue::Node(level, nodeid) => {
+                    let current_level = dd.borrow().level(nodeid);
+                    match dd.borrow().get_node(nodeid).unwrap() {
+                        bdd::Node::NonTerminal(fnode) if level == current_level => {
+                            let x = &self.labels[level.unwrap()];
+                            let level = level.and_then(|x| x.checked_sub(1));
+                            self.next_stack.push(BddStackValue::Pop);
+                            self.next_stack.push(BddStackValue::Node(level, fnode[1]));
+                            self.next_stack.push(BddStackValue::Push(x.to_string()));
+                            self.next_stack.push(BddStackValue::Pop);
+                            self.next_stack.push(BddStackValue::Node(level, fnode[0]));
+                            self.next_stack.push(BddStackValue::Push(format!("~{}", x)));
+                        }
+                        bdd::Node::Zero if level == None => {
+                            if self.ss.contains(&false) {
+                                let mut result = self.path.clone();
+                                result.reverse();
+                                return Some(result);
+                            }
+                        }
+                        bdd::Node::One if level == None => {
+                            if self.ss.contains(&true) {
+                                let mut result = self.path.clone();
+                                result.reverse();
+                                return Some(result);
+                            }
+                        }
+                        bdd::Node::NonTerminal(fnode) => {
+                            let x = &self.labels[level.unwrap()];
+                            let level = level.and_then(|x| x.checked_sub(1));
+                            self.next_stack.push(BddStackValue::Pop);
+                            self.next_stack.push(BddStackValue::Node(level, nodeid));
+                            self.next_stack.push(BddStackValue::Push(x.to_string()));
+                            self.next_stack.push(BddStackValue::Pop);
+                            self.next_stack.push(BddStackValue::Node(level, nodeid));
+                            self.next_stack.push(BddStackValue::Push(format!("~{}", x)));
+                        }
+                        bdd::Node::Zero => {
+                            let x = &self.labels[level.unwrap()];
+                            let level = level.and_then(|x| x.checked_sub(1));
+                            self.next_stack.push(BddStackValue::Pop);
+                            self.next_stack.push(BddStackValue::Node(level, nodeid));
+                            self.next_stack.push(BddStackValue::Push(x.to_string()));
+                            self.next_stack.push(BddStackValue::Pop);
+                            self.next_stack.push(BddStackValue::Node(level, nodeid));
+                            self.next_stack.push(BddStackValue::Push(format!("~{}", x)));
+                        }
+                        bdd::Node::One => {
+                            let x = &self.labels[level.unwrap()];
+                            let level = level.and_then(|x| x.checked_sub(1));
+                            self.next_stack.push(BddStackValue::Pop);
+                            self.next_stack.push(BddStackValue::Node(level, nodeid));
+                            self.next_stack.push(BddStackValue::Push(x.to_string()));
+                            self.next_stack.push(BddStackValue::Pop);
+                            self.next_stack.push(BddStackValue::Node(level, nodeid));
+                            self.next_stack.push(BddStackValue::Push(format!("~{}", x)));
+                        }
+                        bdd::Node::Undet => (),
+                    }
+                }
+                BddStackValue::Push(x) => {
+                    self.path.push(x);
+                }
+                BddStackValue::Pop => {
+                    self.path.pop();
+                }
+            }
+        }
+        None
+    }
+}
+
+enum ZddStackValue {
     Node(NodeId),
     Push(String),
     Pop,
 }
 
 pub struct ZddPath {
-    next_stack: Vec<StackValue>,
+    next_stack: Vec<ZddStackValue>,
     path: Vec<String>,
     node: BddNode,
-    ss: HashSet<bool>,
+    ss: Vec<bool>,
 }
 
 impl ZddPath {
     pub fn new(node: BddNode, ss: &[bool]) -> Self {
+        let ss = ss.iter().cloned().collect::<Vec<_>>();
         let mut next_stack = Vec::new();
-        next_stack.push(StackValue::Node(node.get_id()));
-        let ss = ss.iter().cloned().collect::<HashSet<_>>();
+        next_stack.push(ZddStackValue::Node(node.get_id()));
         ZddPath {
-            next_stack: next_stack,
+            next_stack,
             path: Vec::new(),
-            node: node,
-            ss: ss,
+            node,
+            ss,
         }
     }
 
     pub fn len(&self) -> u64 {
-        self.node.zdd_count(&vec![true])
+        self.node.zdd_count(&self.ss)
     }
 }
 
@@ -45,7 +167,7 @@ impl Iterator for ZddPath {
         let dd = self.node.get_mgr();
         while let Some(stackvalue) = self.next_stack.pop() {
             match stackvalue {
-                StackValue::Node(node) => match dd.borrow().get_node(node).unwrap() {
+                ZddStackValue::Node(node) => match dd.borrow().get_node(node).unwrap() {
                     bdd::Node::Zero => {
                         if self.ss.contains(&false) {
                             let mut result = self.path.clone();
@@ -62,15 +184,15 @@ impl Iterator for ZddPath {
                     }
                     bdd::Node::NonTerminal(fnode) => {
                         let x = dd.borrow().label(node).unwrap().to_string();
-                        self.next_stack.push(StackValue::Pop);
-                        self.next_stack.push(StackValue::Node(fnode[1]));
-                        self.next_stack.push(StackValue::Push(x));
-                        self.next_stack.push(StackValue::Node(fnode[0]));
+                        self.next_stack.push(ZddStackValue::Pop);
+                        self.next_stack.push(ZddStackValue::Node(fnode[1]));
+                        self.next_stack.push(ZddStackValue::Push(x));
+                        self.next_stack.push(ZddStackValue::Node(fnode[0]));
                     }
                     bdd::Node::Undet => (),
                 },
-                StackValue::Push(x) => self.path.push(x),
-                StackValue::Pop => {
+                ZddStackValue::Push(x) => self.path.push(x),
+                ZddStackValue::Pop => {
                     self.path.pop();
                 }
             }

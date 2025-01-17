@@ -14,6 +14,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::rc::Weak;
 
+use crate::bdd_path::BddPath;
 use crate::bdd_path::ZddPath;
 use crate::bss_algo;
 use crate::bss_algo::ProbValue;
@@ -341,8 +342,15 @@ impl BddNode {
         BddNode::new(&bdd, result)
     }
 
-    pub fn extract(&self, ss: &[bool]) -> ZddPath {
-        ZddPath::new(self.clone(), ss)
+    pub fn bdd_count(&self, ss: &[bool]) -> u64 {
+        let bdd = self.parent.upgrade().unwrap();
+        let mut cache = common::HashMap::default();
+        let ss = ss.iter().map(|&x| x).collect::<HashSet<bool>>();
+        bss_algo::bdd_count(&mut bdd.clone().borrow_mut(), &ss, self.node, &mut cache)
+    }
+
+    pub fn bdd_extract(&self, ss: &[bool]) -> BddPath {
+        BddPath::new(self.clone(), ss)
     }
 
     pub fn zdd_count(&self, ss: &[bool]) -> u64 {
@@ -350,6 +358,10 @@ impl BddNode {
         let mut cache = common::HashMap::default();
         let ss = ss.iter().map(|&x| x).collect::<HashSet<bool>>();
         bss_algo::zdd_count(&mut bdd.clone().borrow_mut(), &ss, self.node, &mut cache)
+    }
+
+    pub fn zdd_extract(&self, ss: &[bool]) -> ZddPath {
+        ZddPath::new(self.clone(), ss)
     }
 }
 
@@ -471,7 +483,39 @@ mod tests {
         let z = bss.defvar("z");
         let z = bss.rpn("x y & z |").unwrap();
         println!("{}", z.dot());
-        let path = z.extract(&[true]);
+        let path = z.bdd_extract(&[true]);
+        let mut count = 0;
+        for p in path {
+            count += 1;
+            println!("{:?}", p);
+        }
+    }
+
+    #[test]
+    fn test_bdd_path2() {
+        let mut bss = BssMgr::new();
+        let x = bss.defvar("x");
+        let y = bss.defvar("y");
+        let z = bss.defvar("z");
+        let z = bss.rpn("x y & z |").unwrap();
+        println!("{}", z.dot());
+        let path = z.bdd_extract(&[false]);
+        let mut count = 0;
+        for p in path {
+            count += 1;
+            println!("{:?}", p);
+        }
+    }
+
+    #[test]
+    fn test_zdd_path() {
+        let mut bss = BssMgr::new();
+        let x = bss.defvar("x");
+        let y = bss.defvar("y");
+        let z = bss.defvar("z");
+        let z = bss.rpn("x y & z |").unwrap();
+        println!("{}", z.dot());
+        let path = z.zdd_extract(&[true]);
         let mut count = 0;
         for p in path {
             count += 1;
@@ -479,3 +523,4 @@ mod tests {
         }
     }
 }
+
