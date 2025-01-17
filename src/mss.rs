@@ -17,6 +17,7 @@ use crate::prelude::*;
 
 use crate::mdd_prob;
 use crate::mdd_minsol;
+use crate::mdd_count;
 
 pub struct MddMgr<V> {
     mdd: Rc<RefCell<mtmdd2::MtMdd2Manager<V>>>,
@@ -345,16 +346,27 @@ impl<V> MddNode<V>
 where
     V: MDDValue,
 {
+    pub fn get_mgr(&self) -> Rc<RefCell<mtmdd2::MtMdd2Manager<V>>> {
+        self.parent.upgrade().unwrap()
+    }
+
     pub fn get_node(&self) -> mtmdd2::Node {
         self.node.clone()
     }
-    
-    pub fn get_id(&self) -> (NodeId, NodeId) {
+
+    pub fn get_id(&self) -> NodeId {
         match &self.node {
-            mtmdd2::Node::Value(x) => (*x, 0),
-            mtmdd2::Node::Bool(x) => (0, *x),
+            mtmdd2::Node::Value(x) => *x,
+            mtmdd2::Node::Bool(x) => *x,
         }
     }
+
+    // pub fn get_id(&self) -> (NodeId, NodeId) {
+    //     match &self.node {
+    //         mtmdd2::Node::Value(x) => (*x, 0),
+    //         mtmdd2::Node::Bool(x) => (0, *x),
+    //     }
+    // }
 
     pub fn get_header(&self) -> Option<HeaderId> {
         match &self.node {
@@ -629,19 +641,16 @@ where
         MddNode::new(&mgr, node)
     }
 
-    pub fn count_set(&self) -> (u64, u64) {
-        match &self.node {
-            mtmdd2::Node::Value(x) => {
-                let mgr = self.parent.upgrade().unwrap();
-                let mdd = mgr.borrow();
-                mdd.count(self.node)
-            }
-            mtmdd2::Node::Bool(x) => {
-                let mgr = self.parent.upgrade().unwrap();
-                let mdd = mgr.borrow();
-                mdd.count(self.node)
-            }
-        }
+    pub fn mdd_count(&self, ss: &HashSet<V>) -> u64 {
+        let mgr = self.parent.upgrade().unwrap();
+        let mdd = mgr.borrow();
+        mdd_count::mdd_count(&mdd, &self.node, ss)
+    }
+
+    pub fn zmdd_count(&self, ss: &HashSet<V>) -> u64 {
+        let mgr = self.parent.upgrade().unwrap();
+        let mdd = mgr.borrow();
+        mdd_count::zmdd_count(&mdd, &self.node, ss)
     }
 }
 

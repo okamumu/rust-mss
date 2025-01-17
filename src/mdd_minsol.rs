@@ -222,3 +222,31 @@ fn bwithout(
     cache.insert(key, result);
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_mdd() -> (mtmdd2::Node, mtmdd2::MtMdd2Manager<i32>) {
+        let mut mgr = mtmdd2::MtMdd2Manager::<i32>::new(); 
+        let h = mgr.create_header(0, "x", 3);
+        let zero = mgr.value(0);
+        let one = mgr.value(1);
+        let two = mgr.value(2);
+        let x = mgr.create_node(h, &vec![zero, one, two]);
+        let h = mgr.create_header(1, "y", 3);
+        let y = mgr.create_node(h, &vec![zero, one, two]);
+        let h = mgr.create_header(2, "z", 3);
+        let z = mgr.create_node(h, &vec![zero, one, two]);
+        let tmp = mgr.add(x, y);
+        (mgr.mul(tmp, z), mgr)
+    }
+
+    #[test]
+    fn test_minsol() {
+        let (node, mut mgr) = create_mdd();
+        println!("{}", mgr.dot_string(node.clone()));
+        let result = minsol(&mut mgr, &node);
+        println!("{}", mgr.dot_string(result.clone()));
+    }
+}

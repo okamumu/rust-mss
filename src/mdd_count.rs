@@ -1,7 +1,7 @@
 use crate::prelude::*;
 
 pub fn mdd_count<V, T>(
-    mdd: &mut mtmdd2::MtMdd2Manager<V>,
+    mdd: &mtmdd2::MtMdd2Manager<V>,
     node: &mtmdd2::Node,
     ss: &HashSet<V>,
 ) -> T
@@ -20,7 +20,7 @@ where
                         level2headers[h.level()] = hid;
                     }
                 }
-                vmdd_count(&mut mdd.mtmdd_mut(), *fnode, ss, &mut cache, Some(level), &level2headers)
+                vmdd_count(mdd.mtmdd(), *fnode, ss, &mut cache, Some(level), &level2headers)
             } else {
                 T::from(1)
             }
@@ -35,7 +35,7 @@ where
                         level2headers[h.level()] = hid;
                     }
                 }
-                bmdd_count(&mut mdd.mdd_mut(), *fnode, ss, &mut cache, Some(level), &level2headers)
+                bmdd_count(mdd.mdd(), *fnode, ss, &mut cache, Some(level), &level2headers)
             } else {
                 T::from(1)
             }
@@ -44,7 +44,7 @@ where
 }
 
 fn vmdd_count<V, T>(
-    mdd: &mut mtmdd::MtMddManager<V>,
+    mdd: &mtmdd::MtMddManager<V>,
     node: NodeId,
     ss: &HashSet<V>,
     cache: &mut BddHashMap<(NodeId, Option<usize>), T>,
@@ -88,7 +88,7 @@ where
 }
 
 fn bmdd_count<V, T>(
-    mdd: &mut mdd::MddManager,
+    mdd: &mdd::MddManager,
     node: NodeId,
     ss: &HashSet<V>,
     cache: &mut BddHashMap<NodeId, T>,
@@ -138,7 +138,7 @@ where
 }
 
 pub fn zmdd_count<V, T>(
-    mdd: &mut mtmdd2::MtMdd2Manager<V>,
+    mdd: &mtmdd2::MtMdd2Manager<V>,
     node: &mtmdd2::Node,
     ss: &HashSet<V>,
 ) -> T
@@ -149,17 +149,17 @@ where
     match node {
         mtmdd2::Node::Value(fnode) => {
             let mut cache = BddHashMap::default();
-            vzmdd_count(&mut mdd.mtmdd_mut(), *fnode, ss, &mut cache)
+            vzmdd_count(mdd.mtmdd(), *fnode, ss, &mut cache)
         }
         mtmdd2::Node::Bool(fnode) => {
             let mut cache = BddHashMap::default();
-            bzmdd_count(&mut mdd.mdd_mut(), *fnode, ss, &mut cache)
+            bzmdd_count(mdd.mdd(), *fnode, ss, &mut cache)
         }
     }
 }
 
 fn vzmdd_count<V, T>(
-    mdd: &mut mtmdd::MtMddManager<V>,
+    mdd: &mtmdd::MtMddManager<V>,
     node: NodeId,
     ss: &HashSet<V>,
     cache: &mut BddHashMap<NodeId, T>,
@@ -197,7 +197,7 @@ where
 }
 
 fn bzmdd_count<V, T>(
-    mdd: &mut mdd::MddManager,
+    mdd: &mdd::MddManager,
     node: NodeId,
     ss: &HashSet<V>,
     cache: &mut BddHashMap<NodeId, T>,
