@@ -77,7 +77,7 @@ where
                 self.vnext()
             }
             mtmdd2::Node::Bool(_fnode) => {
-                None
+                self.bnext()
             }
         }
     }
@@ -94,7 +94,17 @@ where
                 BddStackValue::Node(level, nodeid) => {
                     let current_level = dd.borrow().mtmdd().level(nodeid);
                     match dd.borrow().mtmdd().get_node(nodeid).unwrap() {
-                        mtmdd::Node::NonTerminal(fnode) if level == current_level => {
+                        mtmdd::Node::NonTerminal(_) | mtmdd::Node::Terminal(_) if level > current_level => {
+                            let label = &self.labels[level.unwrap()];
+                            let nedge = self.edges[level.unwrap()];
+                            let level = level.and_then(|x| x.checked_sub(1));
+                            for i in (0..nedge).rev() {
+                                self.next_stack.push(BddStackValue::Pop(label.to_string()));
+                                self.next_stack.push(BddStackValue::Node(level, nodeid));
+                                self.next_stack.push(BddStackValue::Push(label.to_string(), i));
+                            }
+                        }
+                        mtmdd::Node::NonTerminal(fnode) => {
                             let label = &self.labels[level.unwrap()];
                             let level = level.and_then(|x| x.checked_sub(1));
                             let fnodeid = fnode.iter().cloned().collect::<Vec<_>>();
@@ -104,14 +114,35 @@ where
                                 self.next_stack.push(BddStackValue::Push(label.to_string(), i));
                             }
                         }
-                        mtmdd::Node::Terminal(fnode) if level == current_level => {
+                        mtmdd::Node::Terminal(fnode) => {
                             let value = fnode.value();
                             if self.ss.contains(&value) {
                                 let result = self.path.clone();
                                 return Some(result);
                             }
                         }
-                        mtmdd::Node::NonTerminal(_) | mtmdd::Node::Terminal(_) => {
+                        _ => (),
+                    }
+                }
+                BddStackValue::Push(x, i) => {
+                    self.path.insert(x, i);
+                }
+                BddStackValue::Pop(x) => {
+                    self.path.remove(&x);
+                }
+            }
+        }
+        None
+    }
+
+    fn bnext(&mut self) -> Option<HashMap<String,usize>> {
+        let dd = self.node.get_mgr();
+        while let Some(stackvalue) = self.next_stack.pop() {
+            match stackvalue {
+                BddStackValue::Node(level, nodeid) => {
+                    let current_level = dd.borrow().mdd().level(nodeid);
+                    match dd.borrow().mdd().get_node(nodeid).unwrap() {
+                        mdd::Node::NonTerminal(_) | mdd::Node::One | mdd::Node::Zero if level > current_level => {
                             let label = &self.labels[level.unwrap()];
                             let nedge = self.edges[level.unwrap()];
                             let level = level.and_then(|x| x.checked_sub(1));
@@ -119,6 +150,28 @@ where
                                 self.next_stack.push(BddStackValue::Pop(label.to_string()));
                                 self.next_stack.push(BddStackValue::Node(level, nodeid));
                                 self.next_stack.push(BddStackValue::Push(label.to_string(), i));
+                            }
+                        }
+                        mdd::Node::NonTerminal(fnode) => {
+                            let label = &self.labels[level.unwrap()];
+                            let level = level.and_then(|x| x.checked_sub(1));
+                            let fnodeid = fnode.iter().cloned().collect::<Vec<_>>();
+                            for (i, x) in fnodeid.into_iter().enumerate().rev() {
+                                self.next_stack.push(BddStackValue::Pop(label.to_string()));
+                                self.next_stack.push(BddStackValue::Node(level, x));
+                                self.next_stack.push(BddStackValue::Push(label.to_string(), i));
+                            }
+                        }
+                        mdd::Node::Zero => {
+                            if self.ss.contains(&V::from(0)) {
+                                let result = self.path.clone();
+                                return Some(result);
+                            }
+                        }
+                        mdd::Node::One => {
+                            if self.ss.contains(&V::from(1)) {
+                                let result = self.path.clone();
+                                return Some(result);
                             }
                         }
                         _ => (),
@@ -293,8 +346,34 @@ mod tests {
     }
 
     #[test]
+    fn test_zmdd_count2() {
+        let (node, mgr) = create_mdd();
+        let v = mgr.value(1);
+        let node = node.eq(&v);
+        println!("{}", node.dot());
+        let ss = vec![0].into_iter().collect::<HashSet<_>>();
+        let path = ZMddPath::new(&node, &ss);
+        for p in path {
+            println!("{:?}", p);
+        }
+    }
+
+    #[test]
     fn test_mdd_count() {
         let (node, mgr) = create_mdd();
+        println!("{}", node.dot());
+        let ss = vec![0].into_iter().collect::<HashSet<_>>();
+        let path = BddPath::new(&node, &ss);
+        for p in path {
+            println!("{:?}", p);
+        }
+    }
+
+    #[test]
+    fn test_mdd_count2() {
+        let (node, mgr) = create_mdd();
+        let v = mgr.value(1);
+        let node = node.eq(&v);
         println!("{}", node.dot());
         let ss = vec![0].into_iter().collect::<HashSet<_>>();
         let path = BddPath::new(&node, &ss);
