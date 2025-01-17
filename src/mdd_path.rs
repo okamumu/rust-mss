@@ -136,6 +136,7 @@ where
     }
 
     fn bnext(&mut self) -> Option<HashMap<String,usize>> {
+        // this includes a bug. it should be fixed
         let dd = self.node.get_mgr();
         while let Some(stackvalue) = self.next_stack.pop() {
             match stackvalue {
