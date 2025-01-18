@@ -10,7 +10,7 @@ pub struct BddMgr {
     vars: HashMap<String, NodeId>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BddNode {
     parent: Weak<RefCell<bdd::BddManager>>,
     node: NodeId,
