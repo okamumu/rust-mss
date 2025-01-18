@@ -294,7 +294,7 @@ impl BddNode {
         self.node == other.node
     }
 
-    pub fn prob<T>(&self, pv: HashMap<String, T>, ss: &[bool]) -> T
+    pub fn prob<T>(&self, pv: &HashMap<String, T>, ss: &[bool]) -> T
     where
         T: ProbValue,
     {
@@ -309,7 +309,7 @@ impl BddNode {
         )
     }
 
-    pub fn bmeas<T>(&self, pv: HashMap<String, T>, ss: &[bool]) -> HashMap<String, T>
+    pub fn bmeas<T>(&self, pv: &HashMap<String, T>, ss: &[bool]) -> HashMap<String, T>
     where
         T: ProbValue,
     {
@@ -383,7 +383,7 @@ mod tests {
         pv.insert("x".to_string(), 0.2);
         pv.insert("y".to_string(), 0.3);
         pv.insert("z".to_string(), 0.6);
-        let result = f.prob(pv, &[true]);
+        let result = f.prob(&pv, &[true]);
         println!("{:?}", result);
     }
 
