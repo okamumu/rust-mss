@@ -5,7 +5,7 @@ use crate::bdd_count;
 use crate::bdd_prob;
 use crate::bdd_minsol;
 
-pub struct BssMgr {
+pub struct BddMgr {
     bdd: Rc<RefCell<bdd::BddManager>>,
     vars: HashMap<String, NodeId>,
 }
@@ -25,10 +25,10 @@ impl BddNode {
     }
 }
 
-impl BssMgr {
+impl BddMgr {
     // constructor
     pub fn new() -> Self {
-        BssMgr {
+        BddMgr {
             bdd: Rc::new(RefCell::new(bdd::BddManager::new())),
             vars: HashMap::default(),
         }
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn test_bss_mgr() {
-        let mut bss = BssMgr::new();
+        let mut bss = BddMgr::new();
         let x = bss.defvar("x");
         let y = bss.defvar("y");
         let z = bss.defvar("z");
@@ -374,7 +374,7 @@ mod tests {
 
     #[test]
     fn test_bss_mgr_prob() {
-        let mut bss = BssMgr::new();
+        let mut bss = BddMgr::new();
         let x = bss.defvar("x");
         let y = bss.defvar("y");
         let z = bss.defvar("z");
@@ -389,7 +389,7 @@ mod tests {
 
     #[test]
     fn test_bss_mgr_rpn() {
-        let mut bss = BssMgr::new();
+        let mut bss = BddMgr::new();
         let x = bss.rpn("x").unwrap();
         let y = bss.rpn("y").unwrap();
         let z = bss.rpn("z").unwrap();
@@ -398,7 +398,7 @@ mod tests {
 
     #[test]
     fn test_bdd_path() {
-        let mut bss = BssMgr::new();
+        let mut bss = BddMgr::new();
         let x = bss.defvar("x");
         let y = bss.defvar("y");
         let z = bss.defvar("z");
@@ -414,7 +414,7 @@ mod tests {
 
     #[test]
     fn test_bdd_path2() {
-        let mut bss = BssMgr::new();
+        let mut bss = BddMgr::new();
         let x = bss.defvar("x");
         let y = bss.defvar("y");
         let z = bss.defvar("z");
@@ -430,7 +430,7 @@ mod tests {
 
     #[test]
     fn test_bdd_path3() {
-        let mut bss = BssMgr::new();
+        let mut bss = BddMgr::new();
         let x = bss.defvar("x");
         let y = bss.defvar("y");
         let z = bss.defvar("z");
@@ -447,7 +447,7 @@ mod tests {
 
     #[test]
     fn test_zdd_path() {
-        let mut bss = BssMgr::new();
+        let mut bss = BddMgr::new();
         let x = bss.defvar("x");
         let y = bss.defvar("y");
         let z = bss.defvar("z");

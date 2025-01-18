@@ -39,3 +39,13 @@ pub trait MDDValue: dd::common::TerminalNumberValue + From<i32> + FromStr {}
 
 impl MDDValue for i64 {}
 impl MDDValue for i32 {}
+
+pub use crate::bss::BddMgr;
+pub use crate::bss::BddNode;
+pub use crate::bdd_path::BddPath;
+pub use crate::bdd_path::ZddPath;
+
+pub use crate::mss::MddMgr;
+pub use crate::mss::MddNode;
+pub use crate::mdd_path::MddPath;
+pub use crate::mdd_path::ZMddPath;
