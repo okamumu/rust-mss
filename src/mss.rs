@@ -18,6 +18,8 @@ use crate::prelude::*;
 use crate::mdd_prob;
 use crate::mdd_minsol;
 use crate::mdd_count;
+use crate::mdd_path::MddPath;
+use crate::mdd_path::ZMddPath;
 
 pub struct MddMgr<V> {
     mdd: Rc<RefCell<mtmdd2::MtMdd2Manager<V>>>,
@@ -651,6 +653,14 @@ where
         let mgr = self.parent.upgrade().unwrap();
         let mdd = mgr.borrow();
         mdd_count::zmdd_count(&mdd, &self.node, ss)
+    }
+
+    pub fn mdd_extract(&self, ss: &HashSet<V>) -> MddPath<V> {
+        MddPath::new(self, ss)
+    }
+
+    pub fn zmdd_extract(&self, ss: &HashSet<V>) -> ZMddPath<V> {
+        ZMddPath::new(self, ss)
     }
 }
 

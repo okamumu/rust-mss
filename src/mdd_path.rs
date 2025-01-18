@@ -3,14 +3,14 @@ use std::hash::Hash;
 use crate::prelude::*;
 use crate::mss::MddNode;
 
-enum BddStackValue {
+enum MddStackValue {
     Node(Option<Level>, NodeId),
     Push(String, usize),
     Pop(String),
 }
 
-pub struct BddPath<V> {
-    next_stack: Vec<BddStackValue>,
+pub struct MddPath<V> {
+    next_stack: Vec<MddStackValue>,
     path: HashMap<String,usize>,
     node: MddNode<V>,
     labels: Vec<String>,
@@ -18,14 +18,14 @@ pub struct BddPath<V> {
     ss: HashSet<V>,
 }
 
-impl<V> BddPath<V>
+impl<V> MddPath<V>
 where
     V: MDDValue,
 {
     pub fn new(node: &MddNode<V>, ss: &HashSet<V>) -> Self {
         let mut next_stack = Vec::new();
         let level = node.get_level();
-        next_stack.push(BddStackValue::Node(level, node.get_id()));
+        next_stack.push(MddStackValue::Node(level, node.get_id()));
         let dd = node.get_mgr();
         let (nheaders, _, _, _) = dd.borrow().size();
         let mut labels = vec![String::new(); nheaders];
@@ -50,7 +50,7 @@ where
                 }        
             }
         }
-        BddPath {
+        MddPath {
             next_stack,
             path: HashMap::new(),
             node: node.clone(),
@@ -65,7 +65,7 @@ where
     }
 }
 
-impl<V> Iterator for BddPath<V>
+impl<V> Iterator for MddPath<V>
 where
     V: MDDValue,
 {
@@ -83,7 +83,7 @@ where
     }
 }
 
-impl<V> BddPath<V>
+impl<V> MddPath<V>
 where
     V: MDDValue,
 {
@@ -91,7 +91,7 @@ where
         let dd = self.node.get_mgr();
         while let Some(stackvalue) = self.next_stack.pop() {
             match stackvalue {
-                BddStackValue::Node(level, nodeid) => {
+                MddStackValue::Node(level, nodeid) => {
                     let current_level = dd.borrow().mtmdd().level(nodeid);
                     match dd.borrow().mtmdd().get_node(nodeid).unwrap() {
                         mtmdd::Node::NonTerminal(_) | mtmdd::Node::Terminal(_) if level > current_level => {
@@ -99,9 +99,9 @@ where
                             let nedge = self.edges[level.unwrap()];
                             let level = level.and_then(|x| x.checked_sub(1));
                             for i in (0..nedge).rev() {
-                                self.next_stack.push(BddStackValue::Pop(label.to_string()));
-                                self.next_stack.push(BddStackValue::Node(level, nodeid));
-                                self.next_stack.push(BddStackValue::Push(label.to_string(), i));
+                                self.next_stack.push(MddStackValue::Pop(label.to_string()));
+                                self.next_stack.push(MddStackValue::Node(level, nodeid));
+                                self.next_stack.push(MddStackValue::Push(label.to_string(), i));
                             }
                         }
                         mtmdd::Node::NonTerminal(fnode) => {
@@ -109,9 +109,9 @@ where
                             let level = level.and_then(|x| x.checked_sub(1));
                             let fnodeid = fnode.iter().cloned().collect::<Vec<_>>();
                             for (i, x) in fnodeid.into_iter().enumerate().rev() {
-                                self.next_stack.push(BddStackValue::Pop(label.to_string()));
-                                self.next_stack.push(BddStackValue::Node(level, x));
-                                self.next_stack.push(BddStackValue::Push(label.to_string(), i));
+                                self.next_stack.push(MddStackValue::Pop(label.to_string()));
+                                self.next_stack.push(MddStackValue::Node(level, x));
+                                self.next_stack.push(MddStackValue::Push(label.to_string(), i));
                             }
                         }
                         mtmdd::Node::Terminal(fnode) => {
@@ -124,10 +124,10 @@ where
                         _ => (),
                     }
                 }
-                BddStackValue::Push(x, i) => {
+                MddStackValue::Push(x, i) => {
                     self.path.insert(x, i);
                 }
-                BddStackValue::Pop(x) => {
+                MddStackValue::Pop(x) => {
                     self.path.remove(&x);
                 }
             }
@@ -139,7 +139,7 @@ where
         let dd = self.node.get_mgr();
         while let Some(stackvalue) = self.next_stack.pop() {
             match stackvalue {
-                BddStackValue::Node(level, nodeid) => {
+                MddStackValue::Node(level, nodeid) => {
                     let current_level = dd.borrow().mdd().level(nodeid);
                     match dd.borrow().mdd().get_node(nodeid).unwrap() {
                         mdd::Node::NonTerminal(_) | mdd::Node::One | mdd::Node::Zero if level > current_level => {
@@ -147,9 +147,9 @@ where
                             let nedge = self.edges[level.unwrap()];
                             let level = level.and_then(|x| x.checked_sub(1));
                             for i in (0..nedge).rev() {
-                                self.next_stack.push(BddStackValue::Pop(label.to_string()));
-                                self.next_stack.push(BddStackValue::Node(level, nodeid));
-                                self.next_stack.push(BddStackValue::Push(label.to_string(), i));
+                                self.next_stack.push(MddStackValue::Pop(label.to_string()));
+                                self.next_stack.push(MddStackValue::Node(level, nodeid));
+                                self.next_stack.push(MddStackValue::Push(label.to_string(), i));
                             }
                         }
                         mdd::Node::NonTerminal(fnode) => {
@@ -157,9 +157,9 @@ where
                             let level = level.and_then(|x| x.checked_sub(1));
                             let fnodeid = fnode.iter().cloned().collect::<Vec<_>>();
                             for (i, x) in fnodeid.into_iter().enumerate().rev() {
-                                self.next_stack.push(BddStackValue::Pop(label.to_string()));
-                                self.next_stack.push(BddStackValue::Node(level, x));
-                                self.next_stack.push(BddStackValue::Push(label.to_string(), i));
+                                self.next_stack.push(MddStackValue::Pop(label.to_string()));
+                                self.next_stack.push(MddStackValue::Node(level, x));
+                                self.next_stack.push(MddStackValue::Push(label.to_string(), i));
                             }
                         }
                         mdd::Node::Zero => {
@@ -177,10 +177,10 @@ where
                         _ => (),
                     }
                 }
-                BddStackValue::Push(x, i) => {
+                MddStackValue::Push(x, i) => {
                     self.path.insert(x, i);
                 }
-                BddStackValue::Pop(x) => {
+                MddStackValue::Pop(x) => {
                     self.path.remove(&x);
                 }
             }
@@ -363,7 +363,7 @@ mod tests {
         let (node, mgr) = create_mdd();
         println!("{}", node.dot());
         let ss = vec![0].into_iter().collect::<HashSet<_>>();
-        let path = BddPath::new(&node, &ss);
+        let path = MddPath::new(&node, &ss);
         for p in path {
             println!("{:?}", p);
         }
@@ -376,7 +376,7 @@ mod tests {
         let node = node.eq(&v);
         println!("{}", node.dot());
         let ss = vec![0].into_iter().collect::<HashSet<_>>();
-        let path = BddPath::new(&node, &ss);
+        let path = MddPath::new(&node, &ss);
         for p in path {
             println!("{:?}", p);
         }
