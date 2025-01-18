@@ -379,7 +379,7 @@ where
             mtmdd2::Node::Bool(x) => {
                 let mddmgr = self.parent.upgrade().unwrap();
                 let mdd = mddmgr.borrow();
-                let node = mdd.mtmdd().get_node(*x)?;
+                let node = mdd.mdd().get_node(*x)?;
                 node.headerid()
             }
         }
@@ -398,9 +398,9 @@ where
             mtmdd2::Node::Bool(x) => {
                 let mddmgr = self.parent.upgrade().unwrap();
                 let mdd = mddmgr.borrow();
-                let node = mdd.mtmdd().get_node(*x)?;
+                let node = mdd.mdd().get_node(*x)?;
                 let hid = node.headerid()?;
-                let header = mdd.mtmdd().get_header(hid)?;
+                let header = mdd.mdd().get_header(hid)?;
                 Some(header.level())
             }
         }
@@ -419,9 +419,9 @@ where
             mtmdd2::Node::Bool(x) => {
                 let mddmgr = self.parent.upgrade().unwrap();
                 let mdd = mddmgr.borrow();
-                let node = mdd.mtmdd().get_node(*x)?;
+                let node = mdd.mdd().get_node(*x)?;
                 let hid = node.headerid()?;
-                let header = mdd.mtmdd().get_header(hid)?;
+                let header = mdd.mdd().get_header(hid)?;
                 Some(header.label().to_string())
             }
         }
