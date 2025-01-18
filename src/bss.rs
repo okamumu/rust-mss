@@ -1,3 +1,4 @@
+use crate::bdd_count::node_count;
 use crate::prelude::*;
 
 use crate::bdd_path::*;
@@ -345,6 +346,14 @@ impl BddNode {
     pub fn zdd_extract(&self, ss: &[bool]) -> ZddPath {
         ZddPath::new(self.clone(), ss)
     }
+
+    pub fn size(&self) -> (u64, u64, u64) {
+        let bddmgr = self.parent.upgrade().unwrap();
+        let bdd = bddmgr.borrow();
+        let mut cache = BddHashSet::default();
+        let (nn, nv, ne) = bdd_count::node_count(&bdd, self.node, &mut cache);
+        (nn, nv, ne-1)
+    }
 }
 
 #[cfg(test)]
@@ -459,6 +468,17 @@ mod tests {
             count += 1;
             println!("{:?}", p);
         }
+    }
+
+    #[test]
+    fn test_node_count() {
+        let mut bss = BddMgr::new();
+        let x = bss.defvar("x");
+        let y = bss.defvar("y");
+        let z = bss.defvar("z");
+        let z = bss.rpn("x y & z |").unwrap();
+        println!("{}", z.dot());
+        println!("{:?}", z.size());
     }
 }
 

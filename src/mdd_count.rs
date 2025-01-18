@@ -1,5 +1,94 @@
 use crate::prelude::*;
 
+pub fn mddnode_count<V, T>(
+    dd: &mtmdd2::MtMdd2Manager<V>,
+    node: &mtmdd2::Node) -> (T, T, T)
+where
+    T: Add<Output = T> + Sub<Output = T> + Clone + From<u32>,
+    V: MDDValue,
+{
+    match node {
+        mtmdd2::Node::Value(fnode) => {
+            let mut cache = BddHashSet::default();
+            let (nn, nv, ne) = vmddnode_count(dd, *fnode, &mut cache);
+            (nn, nv, ne-T::from(1))
+        }
+        mtmdd2::Node::Bool(fnode) => {
+            let mut cache = BddHashSet::default();
+            let (nn, nv, ne) = bmddnode_count(dd, *fnode, &mut cache);
+            (nn, nv, ne-T::from(1))
+        }
+    }
+}
+
+fn vmddnode_count<V, T>(
+    dd: &mtmdd2::MtMdd2Manager<V>,
+    node: NodeId,
+    cache: &mut BddHashSet<NodeId>) -> (T, T, T)
+where
+    T: Add<Output = T> + Clone + From<u32>,
+    V: MDDValue,
+{
+    let key = node;
+    if cache.contains(&key) {
+        return (T::from(0), T::from(0), T::from(1));
+    }
+    let result = match dd.mtmdd().get_node(node).unwrap() {
+        mtmdd::Node::Terminal(_) | mtmdd::Node::Undet => {
+            (T::from(0), T::from(1), T::from(1))
+        }
+        mtmdd::Node::NonTerminal(fnode) => {
+            let mut nn = T::from(1);
+            let mut nv = T::from(0);
+            let mut ne = T::from(1);
+            let fnodeid: Vec<_> = fnode.iter().cloned().collect();
+            for x in fnodeid.into_iter() {
+                let (ntmp, vtmp, etmp) = vmddnode_count(dd, x, cache);
+                nn = nn + ntmp;
+                nv = nv + vtmp;
+                ne = ne + etmp;
+            }
+            (nn, nv, ne)
+        }
+    };
+    cache.insert(key);
+    result
+}
+
+fn bmddnode_count<V, T>(
+    dd: &mtmdd2::MtMdd2Manager<V>,
+    node: NodeId,
+    cache: &mut BddHashSet<NodeId>) -> (T, T, T)
+where
+    T: Add<Output = T> + Clone + From<u32>,
+    V: MDDValue,
+{
+    let key = node;
+    if cache.contains(&key) {
+        return (T::from(0), T::from(0), T::from(1));
+    }
+    let result = match dd.mdd().get_node(node).unwrap() {
+        mdd::Node::Zero | mdd::Node::One | mdd::Node::Undet => {
+            (T::from(0), T::from(1), T::from(1))
+        }
+        mdd::Node::NonTerminal(fnode) => {
+            let mut nn = T::from(1);
+            let mut nv = T::from(0);
+            let mut ne = T::from(1);
+            let fnodeid: Vec<_> = fnode.iter().cloned().collect();
+            for x in fnodeid.into_iter() {
+                let (ntmp, vtmp, etmp) = bmddnode_count(dd, x, cache);
+                nn = nn + ntmp;
+                nv = nv + vtmp;
+                ne = ne + etmp;
+            }
+            (nn, nv, ne)
+        }
+    };
+    cache.insert(key);
+    result
+}
+
 pub fn mdd_count<V, T>(
     mdd: &mtmdd2::MtMdd2Manager<V>,
     node: &mtmdd2::Node,
@@ -273,9 +362,29 @@ mod tests {
     fn test_mdd_count() {
         let (node, mut mgr) = create_mdd();
         let ss = vec![0].into_iter().collect::<HashSet<_>>();
-        println!("{}", mgr.dot_string(node.clone()));
+        println!("{}", mgr.dot_string(node));
         let result: u64 = mdd_count(&mut mgr, &node, &ss);
         println!("{}", result);
         assert!(result == 11);
+    }
+
+    #[test]
+    fn test_mddnode_count() {
+        let (node, mut mgr) = create_mdd();
+        println!("{}", mgr.dot_string(node));
+        let result: (u64, u64, u64) = mddnode_count(&mut mgr, &node);
+        println!("{:?}", result);
+        assert!(result == (9, 6, 27));
+    }
+
+    #[test]
+    fn test_mddnode_count2() {
+        let (node, mut mgr) = create_mdd();
+        let zero = mgr.value(0);
+        let node = mgr.eq(node, zero);
+        println!("{}", mgr.dot_string(node));
+        let result: (u64, u64, u64) = mddnode_count(&mut mgr, &node);
+        println!("{:?}", result);
+        assert!(result == (3, 2, 9));
     }
 }

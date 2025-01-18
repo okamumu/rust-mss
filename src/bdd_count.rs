@@ -11,6 +11,32 @@ where
     result
 }
 
+pub fn node_count<T>(
+    dd: &BddManager,
+    node: NodeId,
+    cache: &mut BddHashSet<NodeId>,
+) -> (T, T, T)
+where
+    T: Add<Output = T> + Clone + From<u32>,
+{
+    let key = node;
+    if cache.contains(&key) {
+        return (T::from(0), T::from(0), T::from(1));
+    }
+    let result = match dd.get_node(node).unwrap() {
+        bdd::Node::One | bdd::Node::Zero | bdd::Node::Undet => {
+            (T::from(0), T::from(1), T::from(1))
+        }
+        bdd::Node::NonTerminal(fnode) => {
+            let (n0, v0, e0): (T, T, T) = node_count(dd, fnode[0], cache);
+            let (n1, v1, e1): (T, T, T) = node_count(dd, fnode[1], cache);
+            (n0 + n1 + T::from(1), v0 + v1, e0 + e1 + T::from(1))
+        }
+    };
+    cache.insert(key);
+    result
+}
+
 pub fn bdd_count<T>(
     dd: &BddManager,
     ss: &[bool],
@@ -102,4 +128,3 @@ where
     cache.insert(key, result.clone());
     result
 }
-

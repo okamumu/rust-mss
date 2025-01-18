@@ -662,6 +662,12 @@ where
     pub fn zmdd_extract(&self, ss: &HashSet<V>) -> ZMddPath<V> {
         ZMddPath::new(self, ss)
     }
+
+    pub fn size(&self) -> (u64, u64, u64) {
+        let mgr = self.parent.upgrade().unwrap();
+        let mdd = mgr.borrow();
+        mdd_count::mddnode_count(&mdd, &self.node)
+    }
 }
 
 #[cfg(test)]

@@ -23,6 +23,7 @@ pub use dd::mtmdd2;
 pub use dd::mtmdd2::MtMdd2Manager;
 
 pub type BddHashMap<K,V> = dd::common::HashMap<K,V>;
+pub type BddHashSet<K> = dd::common::HashSet<K>;
 
 pub use std::cell::RefCell;
 pub use std::rc::Rc;
